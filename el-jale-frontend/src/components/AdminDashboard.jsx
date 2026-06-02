@@ -119,7 +119,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gray-100">
       {/* Navbar Admin */}
       <nav className="bg-gray-900 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-3">
               <span className="font-extrabold text-xl text-white">
@@ -137,7 +137,7 @@ export default function AdminDashboard() {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
         <div className="flex border-b border-gray-300 mb-6">
           {tabs.map(t => (

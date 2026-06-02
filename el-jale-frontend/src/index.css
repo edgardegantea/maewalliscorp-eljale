@@ -2,7 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Un pequeño reset para que el fondo por defecto sea el gris claro que definimos */
-body {
-  @apply bg-brand-light text-gray-800;
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 text-gray-900 font-sans;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-400; }
+}
+
+@layer components {
+  /* Botón primario */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold
+           text-white bg-brand-primary rounded-xl shadow-sm
+           hover:bg-orange-600 active:scale-95
+           transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Botón secundario */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold
+           text-gray-700 bg-white border border-gray-200 rounded-xl shadow-sm
+           hover:bg-gray-50 active:scale-95
+           transition-all duration-150 disabled:opacity-50;
+  }
+
+  /* Botón peligro */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold
+           text-red-600 bg-red-50 border border-red-100 rounded-lg
+           hover:bg-red-100 active:scale-95 transition-all duration-150;
+  }
+
+  /* Card genérica */
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100;
+  }
+
+  /* Input */
+  .input {
+    @apply w-full px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
+           focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary
+           placeholder-gray-400 transition-all;
+  }
+
+  /* Badge de estado */
+  .badge-buscando   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700; }
+  .badge-asignado   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700; }
+  .badge-completado { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700; }
+  .badge-cancelado  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600; }
 }

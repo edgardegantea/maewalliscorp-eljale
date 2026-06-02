@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { storageUrl } from '../api/axios';
 import useNotifications from '../hooks/useNotifications';
-import JobChat from './JobChat';
+import ChatModal from './ChatModal';
 import StarRating from './StarRating';
 import toast from 'react-hot-toast';
 import { SkeletonCard } from './Skeleton';
@@ -16,12 +16,16 @@ const STATUS_CONFIG = {
 };
 
 export default function ExpertDashboard() {
+  // user debe declararse ANTES de usarse en los useState
+  const user = JSON.parse(localStorage.getItem('user'));
+  const isVerified = user?.expert_profile?.is_verified ?? false;
+
   const [availableJobs, setAvailableJobs] = useState([]);
   const [activeJobs, setActiveJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('available');
-  const [openChatId, setOpenChatId] = useState(null);
+  const [chatJob, setChatJob] = useState(null);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -31,8 +35,6 @@ export default function ExpertDashboard() {
   const [evidencePhotos, setEvidencePhotos] = useState([]);
   const [uploadMsg, setUploadMsg] = useState({ id: null, text: '', type: '' });
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('user'));
-  const isVerified = user?.expert_profile?.is_verified ?? false;
   const { pending, refresh: refreshNotifications } = useNotifications(30000);
 
   useEffect(() => {
@@ -132,51 +134,61 @@ export default function ExpertDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-brand-light text-brand-dark font-bold text-xl">
-        Cargando oportunidades...
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <svg className="animate-spin w-10 h-10 text-brand-primary mx-auto mb-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          <p className="text-gray-500 text-sm font-medium">Cargando oportunidades...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-brand-light">
-      <nav className="bg-brand-dark text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
+    <div className="min-h-screen bg-slate-50">
+
+      {chatJob && (
+        <ChatModal
+          job={chatJob}
+          currentUserId={user?.id}
+          onClose={() => setChatJob(null)}
+        />
+      )}
+
+      <nav className="bg-brand-dark shadow-lg sticky top-0 z-40">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center gap-4">
             <div className="flex items-center gap-3">
-              <span className="font-extrabold text-2xl tracking-tight text-white">
-                El <span className="text-brand-primary">Jale</span>
-              </span>
-              <span className="px-3 py-1 bg-brand-accent text-brand-dark text-xs font-bold rounded-full hidden sm:block">
-                Socio Fundador
-              </span>
+              <span className="font-black text-2xl text-white">El <span className="text-brand-primary">Jale</span></span>
+              {user?.expert_profile?.is_founding_member && (
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-brand-accent/20 text-brand-accent text-xs font-bold rounded-full">
+                  ⭐ Fundador
+                </span>
+              )}
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2">
               {pending > 0 && (
-                <button
-                  onClick={() => { fetchAvailableJobs(); setActiveTab('available'); }}
-                  className="relative flex items-center gap-2 bg-orange-500 text-white px-3 py-1 rounded-md text-sm font-medium hover:bg-orange-600 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
+                <button onClick={() => { fetchAvailableJobs(); setActiveTab('available'); }}
+                  className="relative inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-brand-primary rounded-xl hover:bg-orange-600 transition-all">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
                   {pending} nuevo{pending > 1 ? 's' : ''}
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-ping" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-brand-accent rounded-full animate-ping" />
                 </button>
               )}
-              <span className="text-sm font-medium">Hola, {user?.name}</span>
-              <button
-                onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors"
-              >
-                Salir
-              </button>
+              <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
+                  {user?.name?.[0]?.toUpperCase()}
+                </div>
+                <span className="hidden sm:block text-sm font-medium text-gray-300 max-w-[120px] truncate">{user?.name}</span>
+                <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all" title="Salir">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Mi Panel</h1>
           <p className="mt-1 text-sm text-gray-600">Administra tus oportunidades y trabajos en curso.</p>
@@ -189,13 +201,13 @@ export default function ExpertDashboard() {
         )}
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 mb-6">
+        <div className="flex border-b border-gray-100 mb-6 bg-white rounded-2xl p-1 shadow-card gap-1 w-fit">
           <button
             onClick={() => setActiveTab('available')}
-            className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${
               activeTab === 'available'
-                ? 'border-brand-primary text-brand-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
             }`}
           >
             Disponibles
@@ -207,10 +219,10 @@ export default function ExpertDashboard() {
           </button>
           <button
             onClick={() => setActiveTab('active')}
-            className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${
               activeTab === 'active'
-                ? 'border-brand-primary text-brand-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
             }`}
           >
             Mis Jales
@@ -222,10 +234,10 @@ export default function ExpertDashboard() {
           </button>
           <button
             onClick={() => setActiveTab('profile')}
-            className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${
               activeTab === 'profile'
-                ? 'border-brand-primary text-brand-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
             }`}
           >
             Mi Perfil
@@ -280,7 +292,7 @@ export default function ExpertDashboard() {
               )}
             </div>
             {loading ? (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
               </div>
             ) : availableJobs.filter(j =>
@@ -296,7 +308,7 @@ export default function ExpertDashboard() {
                 <p className="mt-1 text-sm text-gray-500">Te avisaremos cuando alguien de tu zona necesite tus servicios.</p>
               </div>
             ) : (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {availableJobs.filter(j =>
                   !searchQuery ||
                   j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -374,7 +386,7 @@ export default function ExpertDashboard() {
                 <p className="mt-1 text-sm text-gray-500">Los trabajos que aceptes aparecerán aquí.</p>
               </div>
             ) : (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {activeJobs.filter(j => filterStatus === 'all' || j.status === filterStatus).map(job => {
                   const status = STATUS_CONFIG[job.status] || { label: job.status, color: 'bg-gray-100 text-gray-700' };
                   return (
@@ -412,30 +424,25 @@ export default function ExpertDashboard() {
 
                       {/* Botones de acción */}
                       {(job.status === 'asignado' || job.status === 'completado') && (
-                        <div className="px-5 pt-3 flex flex-wrap gap-2">
+                        <div className="px-5 pt-3 pb-1 flex flex-wrap gap-2">
                           <button
-                            onClick={() => setOpenChatId(openChatId === job.id ? null : job.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-brand-primary bg-orange-50 hover:bg-orange-100 border border-brand-primary transition-colors"
+                            onClick={() => setChatJob(job)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl text-brand-primary bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
                             </svg>
-                            {openChatId === job.id ? 'Cerrar chat' : 'Chat con cliente'}
+                            Chat con cliente
                           </button>
                           {job.status === 'asignado' && (
                             <button
                               onClick={() => handleCancelJob(job.id)}
                               disabled={cancellingId === job.id}
-                              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
+                              className="btn-danger"
                             >
                               {cancellingId === job.id ? 'Cancelando...' : 'Liberar trabajo'}
                             </button>
                           )}
-                        </div>
-                      )}
-                      {openChatId === job.id && (
-                        <div className="px-5 py-3">
-                          <JobChat job={job} currentUserId={user?.id} />
                         </div>
                       )}
 
