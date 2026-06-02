@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Un pequeño reset para que el fondo por defecto sea el gris claro que definimos */
+body {
+  @apply bg-brand-light text-gray-800;
+}
