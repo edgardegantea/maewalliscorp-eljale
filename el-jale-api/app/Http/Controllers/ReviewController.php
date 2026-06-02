@@ -3,6 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\ReviewReceivedMail;
+use App\Helpers\Notify;
+use App\Services\BadgeService;
 
 class ReviewController extends Controller
 {
@@ -41,12 +45,33 @@ class ReviewController extends Controller
             'comment'        => $request->comment,
         ]);
 
-        // Recalcular promedio en el perfil del experto
+        $review->load('client:id,name');
+
+        // Recalcular promedio
         $profile = \App\Models\ExpertProfile::where('user_id', $job->expert_id)->first();
         if ($profile) {
-            $avg = \App\Models\Review::where('expert_id', $job->expert_id)->avg('rating');
+            $avg   = \App\Models\Review::where('expert_id', $job->expert_id)->avg('rating');
             $total = \App\Models\Review::where('expert_id', $job->expert_id)->count();
-            $profile->update(['average_rating' => round($avg, 1), 'total_reviews' => $total]);
+            $profile->update(['average_rating' => round($avg, 2), 'total_reviews' => $total]);
+
+            // Recalcular badges en background
+            try { BadgeService::recalculate($profile->fresh()); } catch (\Throwable) {}
+        }
+
+        // Notificar al experto
+        $expert = \App\Models\User::find($job->expert_id);
+        if ($expert) {
+            Notify::send($expert->id, 'review_received', "Nueva reseña {$request->rating}/5",
+                "{$user->name} te calificó con {$request->rating} estrellas.", $job->id, 'ServiceJob');
+
+            try {
+                Mail::to($expert->email)->send(new ReviewReceivedMail(
+                    $expert,
+                    $review,
+                    round($profile?->average_rating ?? $request->rating, 1),
+                    $profile?->total_reviews ?? 1,
+                ));
+            } catch (\Throwable) {}
         }
 
         return response()->json($review, 201);

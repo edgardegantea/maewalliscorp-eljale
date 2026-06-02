@@ -13,7 +13,12 @@ class Payment extends Model
         'service_job_id',
         'amount',
         'status',
-        'transaction_id'
+        'transaction_id',
+        'mp_preference_id',
+        'mp_payment_id',
+        'mp_status',
+        'platform_fee',
+        'expert_amount',
     ];
 
     public function serviceJob()

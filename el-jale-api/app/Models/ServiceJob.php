@@ -20,6 +20,12 @@ class ServiceJob extends Model
         'client_photos',
         'expert_photos',
         'address',
+        'preferred_date',
+        'preferred_time',
+        'urgency',
+        'latitude',
+        'longitude',
+        'city',
     ];
 
     protected $casts = [
@@ -46,5 +52,7 @@ class ServiceJob extends Model
     public function payment()  { return $this->hasOne(Payment::class); }
     public function review()   { return $this->hasOne(Review::class); }
     public function messages() { return $this->hasMany(Message::class); }
+    public function bids()     { return $this->hasMany(JobBid::class); }
+    public function dispute()  { return $this->hasOne(Dispute::class); }
 
 }

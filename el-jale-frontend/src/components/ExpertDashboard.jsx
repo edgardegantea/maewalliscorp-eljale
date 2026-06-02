@@ -8,6 +8,11 @@ import StarRating from './StarRating';
 import toast from 'react-hot-toast';
 import { SkeletonCard } from './Skeleton';
 import ExpertStatsWidget from './ExpertStatsWidget';
+import NotificationCenter from './NotificationCenter';
+import IdentityVerification from './IdentityVerification';
+import LocationPicker from './LocationPicker';
+import ExpertOnboarding from './ExpertOnboarding';
+import PremiumCard from './PremiumCard';
 
 const STATUS_CONFIG = {
   asignado:   { label: 'En Progreso',  color: 'bg-blue-100 text-blue-800' },
@@ -31,11 +36,49 @@ export default function ExpertDashboard() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [bio, setBio] = useState(user?.expert_profile?.bio ?? '');
+  const [hourlyRate, setHourlyRate] = useState(user?.expert_profile?.hourly_rate ?? '');
+  const [location, setLocation] = useState({
+    city: user?.expert_profile?.city ?? '',
+    state: user?.expert_profile?.state ?? '',
+    latitude: user?.expert_profile?.latitude ?? null,
+    longitude: user?.expert_profile?.longitude ?? null,
+    coverage_radius_km: user?.expert_profile?.coverage_radius_km ?? 15,
+  });
   const [savingBio, setSavingBio] = useState(false);
   const [evidencePhotos, setEvidencePhotos] = useState([]);
   const [uploadMsg, setUploadMsg] = useState({ id: null, text: '', type: '' });
-  const navigate = useNavigate();
+  const [isAvailable, setIsAvailable] = useState(user?.expert_profile?.is_available ?? true);
+  const [togglingAvail, setTogglingAvail] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    !user?.expert_profile?.onboarding_completed
+  );
+  const [bidJob, setBidJob] = useState(null);
+  const [bidForm, setBidForm] = useState({ message: '', amount: '' });
+  const [submittingBid, setSubmittingBid] = useState(false);
+  // Portfolio
+  const [portfolio, setPortfolio] = useState([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioFiles, setPortfolioFiles] = useState([]);
+  const [portfolioCaptions, setPortfolioCaptions] = useState([]);
+  const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
+  // Mis cotizaciones
+  const [myBids, setMyBids] = useState([]);
+  const [myBidsLoading, setMyBidsLoading] = useState(false);
+  const navigate  = useNavigate();
   const { pending, refresh: refreshNotifications } = useNotifications(30000);
+
+  // Detectar retorno de pago premium
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('premium') === 'success') {
+      toast.success('¡Membresía Premium activada! Ahora apareces primero en las búsquedas.');
+      window.history.replaceState({}, '', '/expert-dashboard');
+    } else if (params.get('premium') === 'failure') {
+      toast.error('El pago no pudo procesarse. Intenta de nuevo.');
+      window.history.replaceState({}, '', '/expert-dashboard');
+    }
+  }, []);
 
   useEffect(() => {
     Promise.all([fetchAvailableJobs(), fetchActiveJobs()]).finally(() => setLoading(false));
@@ -51,10 +94,39 @@ export default function ExpertDashboard() {
     }
   };
 
+  const handleToggleAvailability = async () => {
+    setTogglingAvail(true);
+    try {
+      const r = await api.post('/expert-profile/availability');
+      setIsAvailable(r.data.is_available);
+      toast.success(r.data.message);
+    } catch { toast.error('Error al cambiar disponibilidad'); }
+    finally { setTogglingAvail(false); }
+  };
+
+  const handleSubmitBid = async (e) => {
+    e.preventDefault();
+    if (!bidForm.message.trim()) return;
+    setSubmittingBid(true);
+    try {
+      await api.post(`/jobs/${bidJob.id}/bids`, { message: bidForm.message, amount: bidForm.amount || null });
+      toast.success('¡Cotización enviada! El cliente la revisará pronto.');
+      setBidJob(null);
+      setBidForm({ message: '', amount: '' });
+      setAvailableJobs(availableJobs.filter(j => j.id !== bidJob.id));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error al enviar cotización');
+    } finally { setSubmittingBid(false); }
+  };
+
   const handleSaveBio = async () => {
     setSavingBio(true);
     try {
-      await api.put('/expert-profile', { bio });
+      await api.put('/expert-profile', {
+        bio,
+        hourly_rate: hourlyRate || null,
+        ...location,
+      });
       toast.success('Perfil actualizado.');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error al guardar.');
@@ -122,6 +194,52 @@ export default function ExpertDashboard() {
     }
   };
 
+  const fetchPortfolio = async () => {
+    setPortfolioLoading(true);
+    try {
+      const res = await api.get('/portfolio');
+      setPortfolio(res.data);
+    } catch { toast.error('Error al cargar portfolio'); }
+    finally { setPortfolioLoading(false); }
+  };
+
+  const handlePortfolioUpload = async () => {
+    if (portfolioFiles.length === 0) return;
+    setUploadingPortfolio(true);
+    const formData = new FormData();
+    portfolioFiles.forEach(f => formData.append('photos[]', f));
+    portfolioCaptions.forEach((c, i) => formData.append(`captions[${i}]`, c));
+    try {
+      await api.post('/portfolio', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('Fotos agregadas al portfolio.');
+      setPortfolioFiles([]);
+      setPortfolioCaptions([]);
+      fetchPortfolio();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error al subir fotos.');
+    } finally { setUploadingPortfolio(false); }
+  };
+
+  const handleDeletePortfolioPhoto = async (id) => {
+    if (!window.confirm('¿Eliminar esta foto del portfolio?')) return;
+    setDeletingPhotoId(id);
+    try {
+      await api.delete(`/portfolio/${id}`);
+      setPortfolio(portfolio.filter(p => p.id !== id));
+      toast.success('Foto eliminada.');
+    } catch { toast.error('Error al eliminar foto.'); }
+    finally { setDeletingPhotoId(null); }
+  };
+
+  const fetchMyBids = async () => {
+    setMyBidsLoading(true);
+    try {
+      const res = await api.get('/my-bids');
+      setMyBids(res.data);
+    } catch { toast.error('Error al cargar cotizaciones.'); }
+    finally { setMyBidsLoading(false); }
+  };
+
   const handleLogout = async () => {
     try {
       await api.post('/logout');
@@ -147,10 +265,56 @@ export default function ExpertDashboard() {
     <div className="min-h-screen bg-slate-50">
 
       {chatJob && (
-        <ChatModal
-          job={chatJob}
-          currentUserId={user?.id}
-          onClose={() => setChatJob(null)}
+        <ChatModal job={chatJob} currentUserId={user?.id} onClose={() => setChatJob(null)} />
+      )}
+
+      {/* Modal de cotización */}
+      {bidJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setBidJob(null); }}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" />
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl animate-slide-up">
+            <div className="bg-gradient-to-r from-brand-dark to-slate-800 px-6 py-4 rounded-t-2xl">
+              <h3 className="font-bold text-white">Enviar cotización</h3>
+              <p className="text-gray-300 text-xs mt-0.5 truncate">{bidJob.title}</p>
+            </div>
+            <form onSubmit={handleSubmitBid} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tu mensaje al cliente *</label>
+                <textarea rows={3} required value={bidForm.message} onChange={e => setBidForm({...bidForm, message: e.target.value})}
+                  maxLength={500} placeholder="Preséntate, describe tu experiencia con este tipo de trabajo y cómo lo resolverías..."
+                  className="input resize-none" />
+                <p className="text-xs text-gray-400 text-right mt-0.5">{bidForm.message.length}/500</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tu precio (opcional)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-sm">$</span>
+                  <input type="number" min="0" step="0.01" value={bidForm.amount} onChange={e => setBidForm({...bidForm, amount: e.target.value})}
+                    placeholder="0.00" className="input pl-7" />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Deja vacío para cotizar al ver el trabajo.</p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setBidJob(null)} className="btn-secondary flex-1">Cancelar</button>
+                <button type="submit" disabled={submittingBid} className="btn-primary flex-1">
+                  {submittingBid ? 'Enviando...' : '📤 Enviar cotización'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showOnboarding && (
+        <ExpertOnboarding
+          user={user}
+          onComplete={() => {
+            setShowOnboarding(false);
+            // Actualizar localStorage
+            const stored = JSON.parse(localStorage.getItem('user') || '{}');
+            if (stored.expert_profile) stored.expert_profile.onboarding_completed = true;
+            localStorage.setItem('user', JSON.stringify(stored));
+          }}
         />
       )}
 
@@ -174,6 +338,17 @@ export default function ExpertDashboard() {
                   <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-brand-accent rounded-full animate-ping" />
                 </button>
               )}
+              {/* Toggle disponibilidad */}
+              <button onClick={handleToggleAvailability} disabled={togglingAvail}
+                className={`hidden sm:inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-xl transition-all ${isAvailable ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30' : 'bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30'}`}>
+                <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
+                {togglingAvail ? '...' : isAvailable ? 'Disponible' : 'No disponible'}
+              </button>
+
+              <div className="[&_button]:text-gray-300 [&_button:hover]:text-white [&_button:hover]:bg-white/10">
+                <NotificationCenter />
+              </div>
+
               <div className="flex items-center gap-2 pl-2 border-l border-white/10">
                 <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
                   {user?.name?.[0]?.toUpperCase()}
@@ -231,6 +406,26 @@ export default function ExpertDashboard() {
                 {activeJobs.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => { setActiveTab('bids'); fetchMyBids(); }}
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+              activeTab === 'bids'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Mis Cotizaciones
+          </button>
+          <button
+            onClick={() => { setActiveTab('portfolio'); fetchPortfolio(); }}
+            className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${
+              activeTab === 'portfolio'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Portfolio
           </button>
           <button
             onClick={() => setActiveTab('profile')}
@@ -314,13 +509,14 @@ export default function ExpertDashboard() {
                   j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   j.description.toLowerCase().includes(searchQuery.toLowerCase())
                 ).map(job => (
-                  <div key={job.id} className="flex flex-col bg-white rounded-lg shadow-md border-l-4 border-brand-primary overflow-hidden hover:shadow-lg transition-shadow">
+                  <div key={job.id} className={`flex flex-col bg-white rounded-lg shadow-md border-l-4 overflow-hidden hover:shadow-lg transition-shadow ${job.urgency === 'urgente' ? 'border-red-500' : 'border-brand-primary'}`}>
                     <div className="p-5 flex-grow">
                       <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-lg font-bold text-gray-900">{job.title}</h3>
-                        <span className="inline-flex items-center px-2 py-1 text-xs font-bold text-brand-dark bg-brand-accent rounded">
-                          Nuevo
-                        </span>
+                        <h3 className="text-lg font-bold text-gray-900 pr-2">{job.title}</h3>
+                        {job.urgency === 'urgente'
+                          ? <span className="flex-shrink-0 px-2 py-1 text-xs font-bold text-red-700 bg-red-100 rounded-full">🚨 Urgente</span>
+                          : <span className="flex-shrink-0 px-2 py-1 text-xs font-bold text-brand-dark bg-brand-accent rounded">Nuevo</span>
+                        }
                       </div>
                       <p className="text-sm text-gray-600 mb-4 line-clamp-3">{job.description}</p>
 
@@ -335,14 +531,23 @@ export default function ExpertDashboard() {
                             <span className="text-green-600 font-bold">${job.budget}</span>
                           </div>
                         )}
+                        {job.preferred_date && (
+                          <div>
+                            <span className="font-medium text-gray-900">📅 Fecha:</span>{' '}
+                            <span>{new Date(job.preferred_date + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                            {job.preferred_time && <span> a las {job.preferred_time.slice(0,5)}</span>}
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="bg-gray-50 px-5 py-3 border-t border-gray-100">
-                      <button
-                        onClick={() => handleAcceptJob(job.id)}
-                        className="w-full text-center text-sm font-medium text-white bg-brand-dark hover:bg-gray-800 py-2 rounded transition-colors"
-                      >
-                        Aceptar Trabajo
+                    <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex gap-2">
+                      <button onClick={() => setBidJob(job)}
+                        className="flex-1 text-sm font-semibold text-white bg-brand-primary hover:bg-orange-600 py-2 rounded-xl transition-all active:scale-95">
+                        💬 Cotizar
+                      </button>
+                      <button onClick={() => handleAcceptJob(job.id)}
+                        className="flex-1 text-sm font-medium text-brand-dark bg-white hover:bg-gray-100 py-2 rounded-xl border border-gray-200 transition-all">
+                        Aceptar directo
                       </button>
                     </div>
                   </div>
@@ -435,13 +640,17 @@ export default function ExpertDashboard() {
                             Chat con cliente
                           </button>
                           {job.status === 'asignado' && (
-                            <button
-                              onClick={() => handleCancelJob(job.id)}
-                              disabled={cancellingId === job.id}
-                              className="btn-danger"
-                            >
+                            <button onClick={() => handleCancelJob(job.id)} disabled={cancellingId === job.id}
+                              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-xl text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50">
                               {cancellingId === job.id ? 'Cancelando...' : 'Liberar trabajo'}
                             </button>
+                          )}
+                          {job.status === 'completado' && job.payment?.status === 'liberado_al_experto' && (
+                            <a href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/jobs/${job.id}/invoice`}
+                              target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
+                              📄 Descargar recibo
+                            </a>
                           )}
                         </div>
                       )}
@@ -519,6 +728,145 @@ export default function ExpertDashboard() {
           </>
         )}
 
+        {/* Tab: Mis Cotizaciones */}
+        {activeTab === 'bids' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-gray-900">Mis Cotizaciones Enviadas</h2>
+            {myBidsLoading ? (
+              <div className="flex justify-center py-10"><svg className="animate-spin w-8 h-8 text-brand-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+            ) : myBids.length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-xl shadow-sm border border-gray-200">
+                <p className="text-4xl mb-3">📋</p>
+                <p className="text-gray-500 text-sm">Aún no has enviado cotizaciones.</p>
+                <button onClick={() => setActiveTab('available')} className="mt-4 text-sm text-brand-primary hover:underline font-medium">
+                  Ver trabajos disponibles →
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myBids.map(bid => {
+                  const statusConfig = {
+                    pendiente: { label: 'Pendiente', cls: 'bg-yellow-100 text-yellow-800' },
+                    aceptada:  { label: 'Aceptada',  cls: 'bg-green-100 text-green-800' },
+                    rechazada: { label: 'Rechazada', cls: 'bg-red-100 text-red-700' },
+                  };
+                  const sc = statusConfig[bid.status] || { label: bid.status, cls: 'bg-gray-100 text-gray-700' };
+                  return (
+                    <div key={bid.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{bid.job?.title ?? 'Trabajo'}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{bid.job?.category?.name ?? ''}</p>
+                        </div>
+                        <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${sc.cls}`}>{sc.label}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600 italic">"{bid.message}"</p>
+                      {bid.amount && (
+                        <p className="mt-1 text-sm font-semibold text-brand-primary">${Number(bid.amount).toLocaleString('es-MX')}</p>
+                      )}
+                      <p className="mt-2 text-xs text-gray-400">
+                        Enviada el {new Date(bid.created_at).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Portfolio */}
+        {activeTab === 'portfolio' && (
+          <div className="max-w-3xl space-y-6">
+            {/* Subir fotos */}
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="bg-brand-dark px-6 py-4">
+                <h2 className="text-lg font-bold text-white">Agregar fotos al portfolio</h2>
+                <p className="text-brand-accent text-sm mt-0.5">Muestra tus mejores trabajos. Máximo 12 fotos en total.</p>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Seleccionar fotos (máx. 6 a la vez)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={e => {
+                      const files = Array.from(e.target.files).slice(0, 6);
+                      setPortfolioFiles(files);
+                      setPortfolioCaptions(files.map(() => ''));
+                    }}
+                    className="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-primary file:text-white file:text-sm file:font-medium hover:file:bg-orange-600 cursor-pointer"
+                  />
+                </div>
+
+                {portfolioFiles.length > 0 && (
+                  <div className="space-y-2">
+                    {portfolioFiles.map((file, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <img src={URL.createObjectURL(file)} className="w-12 h-12 object-cover rounded-lg border" alt="" />
+                        <input
+                          type="text"
+                          placeholder={`Descripción (opcional)`}
+                          value={portfolioCaptions[i] || ''}
+                          onChange={e => {
+                            const caps = [...portfolioCaptions];
+                            caps[i] = e.target.value;
+                            setPortfolioCaptions(caps);
+                          }}
+                          className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-brand-primary focus:border-brand-primary"
+                        />
+                      </div>
+                    ))}
+                    <button
+                      onClick={handlePortfolioUpload}
+                      disabled={uploadingPortfolio}
+                      className="mt-2 px-5 py-2 text-sm font-medium text-white bg-brand-primary hover:bg-orange-600 rounded-lg transition-colors disabled:opacity-75"
+                    >
+                      {uploadingPortfolio ? 'Subiendo...' : `📤 Subir ${portfolioFiles.length} foto${portfolioFiles.length > 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Galería actual */}
+            <div className="bg-white rounded-xl shadow-md p-6">
+              <h3 className="font-bold text-gray-900 mb-4">Mis fotos ({portfolio.length}/12)</h3>
+              {portfolioLoading ? (
+                <div className="flex justify-center py-8"><svg className="animate-spin w-7 h-7 text-brand-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+              ) : portfolio.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">Aún no tienes fotos. ¡Sube tus mejores trabajos!</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {portfolio.map(photo => (
+                    <div key={photo.id} className="group relative aspect-square overflow-hidden rounded-xl">
+                      <img
+                        src={`${storageUrl}/${photo.photo_path}`}
+                        alt={photo.caption || ''}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      {photo.caption && (
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
+                          <p className="text-white text-xs">{photo.caption}</p>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleDeletePortfolioPhoto(photo.id)}
+                        disabled={deletingPhotoId === photo.id}
+                        className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
+                        title="Eliminar"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Tab: Mi Perfil */}
         {activeTab === 'profile' && (
           <div className="max-w-2xl space-y-6">
@@ -551,6 +899,34 @@ export default function ExpertDashboard() {
                   </div>
                 </div>
 
+                {/* Zona de cobertura */}
+                <LocationPicker
+                  city={location.city}
+                  state={location.state}
+                  radius={location.coverage_radius_km}
+                  onChange={updates => setLocation(prev => ({ ...prev, ...updates }))}
+                />
+
+                {/* Tarifa por hora */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tarifa por hora <span className="text-gray-400 font-normal">(opcional, se muestra en tu perfil)</span>
+                  </label>
+                  <div className="relative max-w-xs">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={hourlyRate}
+                      onChange={e => setHourlyRate(e.target.value)}
+                      placeholder="Ej. 250.00"
+                      className="w-full border border-gray-300 rounded-md shadow-sm py-2 pl-7 pr-3 text-sm focus:outline-none focus:ring-brand-primary focus:border-brand-primary"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Los clientes verán "desde $X/hora" en tu perfil.</p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Tu bio <span className="text-gray-400 font-normal">(máx. 600 caracteres)</span>
@@ -570,12 +946,18 @@ export default function ExpertDashboard() {
                       disabled={savingBio}
                       className="px-4 py-2 text-sm font-medium text-white bg-brand-primary hover:bg-orange-600 rounded-md transition-colors disabled:opacity-75"
                     >
-                      {savingBio ? 'Guardando...' : 'Guardar bio'}
+                      {savingBio ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Membresía Premium */}
+            <PremiumCard />
+
+            {/* Verificación de identidad */}
+            <IdentityVerification />
 
             {/* Vista previa del perfil */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">

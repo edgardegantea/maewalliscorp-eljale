@@ -4,9 +4,15 @@ import api, { storageUrl } from '../api/axios';
 import useNotifications from '../hooks/useNotifications';
 import ReviewModal from './ReviewModal';
 import ChatModal from './ChatModal';
+import BidsModal from './BidsModal';
+import DisputeModal from './DisputeModal';
 import toast from 'react-hot-toast';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { SkeletonRow } from './Skeleton';
+import StarRating from './StarRating';
+import ClientStatsWidget from './ClientStatsWidget';
+import NotificationCenter from './NotificationCenter';
+import PaymentModal from './PaymentModal';
 
 const STATUS_CONFIG = {
   buscando:   { label: 'Buscando Experto', cls: 'badge-buscando' },
@@ -18,7 +24,7 @@ const STATUS_CONFIG = {
 export default function ClientDashboard() {
   const [categories, setCategories] = useState([]);
   const [myJobs, setMyJobs] = useState([]);
-  const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '' });
+  const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal' });
   const [photos, setPhotos] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,10 +34,42 @@ export default function ClientDashboard() {
   const [cancellingId, setCancellingId] = useState(null);
   const [reviewJob, setReviewJob] = useState(null);
   const [chatJob, setChatJob] = useState(null);
+  const [bidsJob, setBidsJob] = useState(null);
+  const [disputeJob, setDisputeJob] = useState(null);
+  const [paymentJob, setPaymentJob] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [activeTab, setActiveTab] = useState('jobs');
+  const [favorites, setFavorites] = useState([]);
+  const [favLoading, setFavLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const user = JSON.parse(localStorage.getItem('user'));
   const { pending, refresh: refreshNotifications } = useNotifications(30000);
+
+  // Pre-llenar formulario al llegar desde "Contratar directo"
+  const [hireNote, setHireNote] = useState('');
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const expertName  = params.get('name');
+    const paymentStatus = params.get('payment');
+    const jobId       = params.get('job_id');
+
+    if (expertName) {
+      setHireNote(`Quiero contratar a ${expertName}`);
+      setNewJob(prev => ({ ...prev, description: `Solicitud directa para ${expertName}.\n` }));
+      setTimeout(() => document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth' }), 300);
+    }
+
+    if (paymentStatus === 'success' && jobId) {
+      toast.success('¡Pago recibido! Tu dinero está protegido en escrow.');
+      // Verificar estado actualizado
+      api.get(`/jobs/${jobId}/mp/status`).then(() => fetchMyJobs()).catch(() => {});
+    } else if (paymentStatus === 'failure') {
+      toast.error('El pago no pudo procesarse. Intenta de nuevo.');
+    } else if (paymentStatus === 'pending') {
+      toast('Tu pago está pendiente de confirmación.', { icon: '⏳' });
+    }
+  }, [location.search]);
 
   useEffect(() => {
     fetchCategories();
@@ -60,6 +98,23 @@ export default function ClientDashboard() {
     } finally {
       setLoadingJobs(false);
     }
+  };
+
+  const fetchFavorites = async () => {
+    setFavLoading(true);
+    try {
+      const res = await api.get('/favorites');
+      setFavorites(res.data);
+    } catch { toast.error('Error al cargar favoritos.'); }
+    finally { setFavLoading(false); }
+  };
+
+  const handleRemoveFavorite = async (expertId) => {
+    try {
+      await api.post(`/favorites/${expertId}`);
+      setFavorites(favorites.filter(f => f.id !== expertId));
+      toast.success('Eliminado de favoritos.');
+    } catch { toast.error('Error al actualizar favoritos.'); }
   };
 
   const handleLogout = async () => {
@@ -91,7 +146,7 @@ export default function ClientDashboard() {
       });
       setMessage({ type: 'success', text: '¡Tu Jale ha sido publicado! Los expertos serán notificados.' });
       setMyJobs([res.data, ...myJobs]);
-      setNewJob(prev => ({ ...prev, title: '', description: '', budget: '', address: '' }));
+      setNewJob(prev => ({ ...prev, title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal' }));
       setPhotos([]);
     } catch (error) {
       setMessage({ type: 'error', text: error.response?.data?.message || 'Error al publicar el trabajo.' });
@@ -118,7 +173,12 @@ export default function ClientDashboard() {
     if (!window.confirm('¿Confirmas que el trabajo está terminado y quieres liberar el pago al experto?')) return;
     setReleasingId(jobId);
     try {
-      const res = await api.post(`/jobs/${jobId}/release-payment`);
+      // Usar endpoint MP si el pago fue por MP, sino el legacy
+      const job = myJobs.find(j => j.id === jobId);
+      const endpoint = job?.payment?.mp_payment_id
+        ? `/jobs/${jobId}/mp/release`
+        : `/jobs/${jobId}/release-payment`;
+      const res = await api.post(endpoint);
       const updatedJobs = myJobs.map(j =>
         j.id === jobId ? { ...j, status: 'completado', payment: { ...j.payment, status: 'liberado_al_experto' } } : j
       );
@@ -135,6 +195,14 @@ export default function ClientDashboard() {
   return (
     <div className="min-h-screen bg-slate-50">
 
+      {paymentJob && (
+        <PaymentModal
+          job={paymentJob}
+          onClose={() => setPaymentJob(null)}
+          onPaid={() => { setPaymentJob(null); fetchMyJobs(); toast.success('Verificando tu pago...'); }}
+        />
+      )}
+
       {reviewJob && (
         <ReviewModal
           job={reviewJob}
@@ -144,11 +212,13 @@ export default function ClientDashboard() {
       )}
 
       {chatJob && (
-        <ChatModal
-          job={chatJob}
-          currentUserId={user?.id}
-          onClose={() => setChatJob(null)}
-        />
+        <ChatModal job={chatJob} currentUserId={user?.id} onClose={() => setChatJob(null)} />
+      )}
+      {bidsJob && (
+        <BidsModal job={bidsJob} onClose={() => setBidsJob(null)} onAccepted={() => { setBidsJob(null); fetchMyJobs(); }} />
+      )}
+      {disputeJob && (
+        <DisputeModal job={disputeJob} onClose={() => setDisputeJob(null)} onSubmitted={fetchMyJobs} />
       )}
 
       <nav className="bg-white shadow-nav sticky top-0 z-40">
@@ -172,6 +242,8 @@ export default function ClientDashboard() {
                 </button>
               )}
 
+              <NotificationCenter />
+
               <div className="flex items-center gap-2 pl-2 border-l border-gray-100">
                 <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
                   {user?.name?.[0]?.toUpperCase()}
@@ -191,18 +263,44 @@ export default function ClientDashboard() {
 
           {/* Columna Izquierda: Publicar trabajo */}
           <div className="xl:col-span-3 space-y-6">
-            <div className="card overflow-hidden">
+            <div id="job-form" className="card overflow-hidden">
               <div className="bg-gradient-to-r from-brand-dark to-slate-800 px-6 py-5">
                 <h2 className="text-xl font-bold text-white">¿Qué necesitas arreglar hoy?</h2>
                 <p className="text-brand-accent/80 text-sm mt-1">Especialistas verificados listos para ayudarte.</p>
               </div>
 
               <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                {hireNote && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl text-sm border bg-orange-50 border-orange-200 text-orange-800">
+                    🎯 {hireNote} — describe el trabajo que necesitas.
+                    <button type="button" onClick={() => setHireNote('')} className="ml-auto text-orange-500 hover:text-orange-700">✕</button>
+                  </div>
+                )}
                 {message.text && (
                   <div className={`flex items-center gap-2 p-3 rounded-xl text-sm border ${message.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
                     {message.type === 'success' ? '✓' : '✕'} {message.text}
                   </div>
                 )}
+
+                {/* Templates rápidos */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Inicio rápido</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { icon: '🚰', label: 'Fuga de agua',    title: 'Fuga de agua en el hogar',     desc: 'Tengo una fuga de agua que necesita reparación urgente. Por favor traer herramientas para tuberías de PVC y cobre.' },
+                      { icon: '⚡', label: 'Problema eléctrico', title: 'Problema eléctrico en casa', desc: 'Tengo un problema eléctrico que requiere atención. Puede ser cortocircuito, contacto dañado o instalación nueva.' },
+                      { icon: '🎨', label: 'Pintar cuarto',   title: 'Pintar una habitación',        desc: 'Necesito pintar una habitación. El cuarto mide aproximadamente __ m². Tengo preferencia de color: ________.' },
+                      { icon: '🔧', label: 'Mantenimiento',   title: 'Mantenimiento general del hogar', desc: 'Necesito servicio de mantenimiento general: revisar plomería, electricidad y pequeñas reparaciones.' },
+                      { icon: '❄️', label: 'Aire acondicionado', title: 'Servicio de aire acondicionado', desc: 'Mi aire acondicionado necesita servicio. Marca: ___, modelo: ___. Problema: no enfría / hace ruido / no enciende.' },
+                    ].map(t => (
+                      <button key={t.label} type="button"
+                        onClick={() => setNewJob(prev => ({ ...prev, title: t.title, description: t.desc }))}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-orange-50 hover:text-brand-primary rounded-xl border border-gray-200 hover:border-orange-200 transition-all">
+                        {t.icon} {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="col-span-1 md:col-span-2">
@@ -240,6 +338,44 @@ export default function ClientDashboard() {
                     </div>
                     <p className="text-xs text-gray-400 mt-1">Promesa sin regateos ✓</p>
                   </div>
+
+                  {/* Fecha preferida */}
+                  <div className="col-span-1">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">¿Cuándo lo necesitas?</label>
+                    <input type="date" name="preferred_date" value={newJob.preferred_date} onChange={handleChange}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="input" />
+                  </div>
+
+                  {/* Hora preferida */}
+                  <div className="col-span-1">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Hora preferida (Opcional)</label>
+                    <input type="time" name="preferred_time" value={newJob.preferred_time} onChange={handleChange}
+                      className="input" />
+                  </div>
+
+                  {/* Urgencia */}
+                  <div className="col-span-1 md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Nivel de urgencia</label>
+                    <div className="flex gap-3">
+                      {[
+                        { value: 'normal',  label: '📅 Normal',  desc: 'Puedo esperar' },
+                        { value: 'urgente', label: '🚨 Urgente', desc: 'Lo necesito pronto' },
+                      ].map(opt => (
+                        <label key={opt.value} className={`flex-1 flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                          newJob.urgency === opt.value
+                            ? opt.value === 'urgente' ? 'border-red-400 bg-red-50' : 'border-brand-primary bg-orange-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}>
+                          <input type="radio" name="urgency" value={opt.value} checked={newJob.urgency === opt.value} onChange={handleChange} className="sr-only" />
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{opt.label}</p>
+                            <p className="text-xs text-gray-500">{opt.desc}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -271,8 +407,76 @@ export default function ClientDashboard() {
               </form>
             </div>
 
-            {/* Mis Solicitudes */}
-            <div className="card overflow-hidden">
+            <ClientStatsWidget />
+
+            {/* Pestañas: Mis Solicitudes / Mis Favoritos */}
+            <div className="flex bg-white rounded-2xl p-1 shadow-card gap-1 w-fit">
+              <button
+                onClick={() => setActiveTab('jobs')}
+                className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${activeTab === 'jobs' ? 'bg-brand-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                Mis Solicitudes
+              </button>
+              <button
+                onClick={() => { setActiveTab('favorites'); fetchFavorites(); }}
+                className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${activeTab === 'favorites' ? 'bg-brand-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                ❤️ Favoritos
+              </button>
+            </div>
+
+            {/* Tab: Mis Favoritos */}
+            {activeTab === 'favorites' && (
+              <div className="space-y-4">
+                {favLoading ? (
+                  <div className="flex justify-center py-10"><svg className="animate-spin w-8 h-8 text-brand-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+                ) : favorites.length === 0 ? (
+                  <div className="text-center py-16 bg-white rounded-xl shadow-sm border border-gray-200">
+                    <p className="text-4xl mb-3">❤️</p>
+                    <p className="text-gray-500 text-sm">Aún no tienes expertos favoritos.</p>
+                    <Link to="/explorar" className="mt-4 inline-block text-sm text-brand-primary hover:underline font-medium">
+                      Explorar expertos →
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {favorites.map(expert => (
+                      <div key={expert.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white text-xl font-extrabold flex-shrink-0">
+                          {expert.name[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <Link to={`/expertos/${expert.id}`} className="font-bold text-gray-900 hover:text-brand-primary transition-colors">
+                            {expert.name}
+                          </Link>
+                          <p className="text-xs text-brand-primary font-medium mt-0.5">{expert.category?.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <StarRating value={Math.round(expert.avg_rating ?? 0)} readonly size="sm" />
+                            <span className="text-xs text-gray-400">{expert.avg_rating > 0 ? Number(expert.avg_rating).toFixed(1) : 'Sin reseñas'}</span>
+                          </div>
+                          <span className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${expert.is_available ? 'text-emerald-600' : 'text-gray-400'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${expert.is_available ? 'bg-emerald-500' : 'bg-gray-300'}`}/>
+                            {expert.is_available ? 'Disponible' : 'No disponible'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveFavorite(expert.id)}
+                          className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
+                          title="Quitar de favoritos"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab: Mis Solicitudes */}
+            {activeTab === 'jobs' && <div className="card overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200 space-y-3">
                 {/* Fila: título + filtros */}
                 <div className="flex flex-wrap items-center gap-3">
@@ -339,7 +543,12 @@ export default function ClientDashboard() {
                       <div key={job.id} className="p-5 hover:bg-gray-50 transition-colors">
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <h3 className="font-bold text-gray-900">{job.title}</h3>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-gray-900">{job.title}</h3>
+                              {job.urgency === 'urgente' && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">🚨 Urgente</span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-500 mt-0.5">{job.category?.name}</p>
                           </div>
                           <span className={status.cls}>
@@ -358,6 +567,12 @@ export default function ClientDashboard() {
                           {job.address && (
                             <span className="text-gray-700">
                               Dirección: <strong>{job.address}</strong>
+                            </span>
+                          )}
+                          {job.preferred_date && (
+                            <span className="text-gray-700">
+                              📅 <strong>{new Date(job.preferred_date + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'short', month: 'short', day: 'numeric' })}</strong>
+                              {job.preferred_time && ` a las ${job.preferred_time.slice(0, 5)}`}
                             </span>
                           )}
                           {job.expert && (
@@ -403,11 +618,16 @@ export default function ClientDashboard() {
 
                         {/* Acciones según estado */}
                         <div className="mt-3 flex flex-wrap gap-2">
+                          {job.status === 'buscando' && (
+                            <button onClick={() => setBidsJob(job)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl text-white bg-brand-primary hover:bg-orange-600 transition-all">
+                              💬 Ver cotizaciones
+                            </button>
+                          )}
+
                           {(job.status === 'asignado' || job.status === 'completado') && (
-                            <button
-                              onClick={() => setChatJob(job)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl text-brand-primary bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all"
-                            >
+                            <button onClick={() => setChatJob(job)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl text-brand-primary bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all">
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
                               </svg>
@@ -415,14 +635,37 @@ export default function ClientDashboard() {
                             </button>
                           )}
 
-                          {job.status === 'asignado' && job.payment?.status === 'retenido_en_app' && (
+                          {/* Botón pagar — trabajo asignado sin pago todavía */}
+                          {job.status === 'asignado' && (!job.payment || job.payment?.status === 'pendiente') && job.budget > 0 && (
                             <button
-                              onClick={() => handleReleasePayment(job.id)}
-                              disabled={releasingId === job.id}
-                              className={`inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors ${releasingId === job.id ? 'opacity-75 cursor-not-allowed' : ''}`}
+                              onClick={() => setPaymentJob(job)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-[#009EE3] hover:bg-[#0082c0] transition-colors"
                             >
-                              {releasingId === job.id ? 'Liberando...' : 'Confirmar trabajo terminado'}
+                              💳 Pagar con MercadoPago
                             </button>
+                          )}
+
+                          {/* Pago pendiente de confirmación */}
+                          {job.status === 'asignado' && job.payment?.status === 'pendiente' && job.payment?.mp_preference_id && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-yellow-700 bg-yellow-50 border border-yellow-200">
+                              ⏳ Pago en proceso
+                            </span>
+                          )}
+
+                          {/* Pago retenido — confirmar trabajo */}
+                          {job.status === 'asignado' && job.payment?.status === 'retenido_en_app' && (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg text-emerald-700 bg-emerald-50 border border-emerald-200">
+                                🔒 ${ Number(job.payment.amount).toLocaleString('es-MX') } en escrow
+                              </span>
+                              <button
+                                onClick={() => handleReleasePayment(job.id)}
+                                disabled={releasingId === job.id}
+                                className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-green-600 hover:bg-green-700 transition-colors ${releasingId === job.id ? 'opacity-75 cursor-not-allowed' : ''}`}
+                              >
+                                {releasingId === job.id ? 'Liberando...' : '✅ Confirmar trabajo terminado'}
+                              </button>
+                            </div>
                           )}
 
                           {job.status === 'completado' && !job.review && (
@@ -440,12 +683,49 @@ export default function ClientDashboard() {
                             </span>
                           )}
 
-                          {['buscando', 'asignado'].includes(job.status) && (
+                          {/* Volver a contratar */}
+                          {job.status === 'completado' && job.expert && (
                             <button
-                              onClick={() => handleCancelJob(job.id)}
-                              disabled={cancellingId === job.id}
-                              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
-                            >
+                              onClick={() => {
+                                setNewJob(prev => ({
+                                  ...prev,
+                                  category_id: job.category_id ?? prev.category_id,
+                                  title: job.title,
+                                  description: job.description,
+                                  address: job.address ?? '',
+                                }));
+                                setHireNote(`Volver a contratar a ${job.expert.name}`);
+                                document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl text-brand-primary bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all">
+                              🔁 Volver a contratar
+                            </button>
+                          )}
+
+                          {/* Descargar factura */}
+                          {job.status === 'completado' && job.payment?.status === 'liberado_al_experto' && (
+                            <a href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/jobs/${job.id}/invoice`}
+                              target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
+                              📄 Descargar recibo
+                            </a>
+                          )}
+
+                          {job.status === 'asignado' && !job.dispute && (
+                            <button onClick={() => setDisputeJob(job)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all">
+                              ⚠️ Reportar problema
+                            </button>
+                          )}
+                          {job.dispute && (
+                            <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-xl text-red-600 bg-red-50 border border-red-100">
+                              🔴 Disputa {job.dispute.status}
+                            </span>
+                          )}
+
+                          {['buscando', 'asignado'].includes(job.status) && (
+                            <button onClick={() => handleCancelJob(job.id)} disabled={cancellingId === job.id}
+                              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-xl text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50">
                               {cancellingId === job.id ? 'Cancelando...' : 'Cancelar trabajo'}
                             </button>
                           )}
@@ -456,8 +736,7 @@ export default function ClientDashboard() {
                   })}
                 </div>
               )}
-            </div>
-          </div>
+            </div>}</div>
 
           {/* Columna Derecha */}
           <div className="xl:col-span-1 space-y-4">
