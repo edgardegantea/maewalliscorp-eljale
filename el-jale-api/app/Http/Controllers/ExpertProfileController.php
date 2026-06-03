@@ -114,7 +114,10 @@ class ExpertProfileController extends Controller
             'coverage_radius_km'  => 'nullable|integer|min:1|max:200',
         ]);
 
-        $profile = \App\Models\ExpertProfile::where('user_id', $user->id)->firstOrFail();
+        $profile = \App\Models\ExpertProfile::firstOrCreate(
+            ['user_id' => $user->id],
+            ['is_verified' => false, 'is_available' => true]
+        );
         $profile->update($request->only('bio', 'hourly_rate', 'city', 'state', 'latitude', 'longitude', 'coverage_radius_km'));
 
         return response()->json(['message' => 'Perfil actualizado.', 'profile' => $profile]);
