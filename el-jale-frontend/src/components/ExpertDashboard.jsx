@@ -57,6 +57,11 @@ export default function ExpertDashboard() {
   const [bidJob, setBidJob] = useState(null);
   const [bidForm, setBidForm] = useState({ message: '', amount: '' });
   const [submittingBid, setSubmittingBid] = useState(false);
+  const [availableDays, setAvailableDays] = useState(
+    user?.expert_profile?.available_days ?? []
+  );
+  const [availableFrom, setAvailableFrom] = useState(user?.expert_profile?.available_from ?? '09:00');
+  const [availableTo, setAvailableTo]     = useState(user?.expert_profile?.available_to   ?? '18:00');
   // Portfolio
   const [portfolio, setPortfolio] = useState([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
@@ -127,6 +132,9 @@ export default function ExpertDashboard() {
       await api.put('/expert-profile', {
         bio,
         hourly_rate: hourlyRate || null,
+        available_days: availableDays,
+        available_from: availableFrom,
+        available_to: availableTo,
         ...location,
       });
       toast.success('Perfil actualizado.');
@@ -530,15 +538,30 @@ export default function ExpertDashboard() {
                   !searchQuery ||
                   j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   j.description.toLowerCase().includes(searchQuery.toLowerCase())
-                ).map(job => (
+                ).map(job => {
+                    // Score de matching IA: urgencia + presupuesto + novedad
+                    const urgencyScore  = job.urgency === 'urgente' ? 35 : 10;
+                    const budgetScore   = job.budget ? Math.min(35, Math.round((Number(job.budget) / 1500) * 35)) : 15;
+                    const minsPassed    = Math.floor((Date.now() - new Date(job.created_at)) / 60000);
+                    const freshScore    = Math.max(0, 30 - Math.floor(minsPassed / 2));
+                    const matchScore    = Math.min(99, urgencyScore + budgetScore + freshScore);
+                    const scoreColor    = matchScore >= 75 ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
+                                        : matchScore >= 50 ? 'text-amber-600 bg-amber-50 border-amber-200'
+                                        : 'text-gray-500 bg-gray-50 border-gray-200';
+                    return (
                   <div key={job.id} className={`flex flex-col bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${job.urgency === 'urgente' ? 'border-red-200 ring-1 ring-red-100' : 'border-gray-100'}`}>
                     <div className="p-5 flex-grow">
                       <div className="flex justify-between items-start mb-2 gap-2">
                         <h3 className="text-base font-bold text-gray-900 leading-tight">{job.title}</h3>
-                        {job.urgency === 'urgente'
-                          ? <span className="flex-shrink-0 px-2 py-1 text-[10px] font-black text-red-700 bg-red-100 rounded-full">🚨 URGENTE</span>
-                          : <span className="flex-shrink-0 px-2 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">● Nuevo</span>
-                        }
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`px-2 py-0.5 text-[10px] font-black rounded-full border ${scoreColor}`}>
+                            🤖 {matchScore}%
+                          </span>
+                          {job.urgency === 'urgente'
+                            ? <span className="px-2 py-1 text-[10px] font-black text-red-700 bg-red-100 rounded-full">🚨 URGENTE</span>
+                            : <span className="px-2 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">● Nuevo</span>
+                          }
+                        </div>
                       </div>
 
                       <p className="text-xs text-gray-400 mb-2">
@@ -594,7 +617,8 @@ export default function ExpertDashboard() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                  })}
               </div>
             )}
           </>
@@ -680,8 +704,33 @@ export default function ExpertDashboard() {
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
                             </svg>
-                            Chat con cliente
+                            Chat
                           </button>
+
+                          {/* 🚗 Estoy en camino con GPS */}
+                          {job.status === 'asignado' && (
+                            <button
+                              onClick={() => {
+                                if (!navigator.geolocation) { toast.error('Tu dispositivo no soporta GPS'); return; }
+                                navigator.geolocation.getCurrentPosition(
+                                  (pos) => {
+                                    const { latitude, longitude } = pos.coords;
+                                    const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+                                    api.post(`/jobs/${job.id}/messages`, {
+                                      body: `🚗 Estoy en camino. Mi ubicación actual: ${mapsUrl}`
+                                    }).then(() => {
+                                      toast.success('📍 Ubicación compartida con el cliente');
+                                      setChatJob(job);
+                                    }).catch(() => toast.error('No se pudo enviar la ubicación'));
+                                  },
+                                  () => toast.error('No se pudo obtener tu ubicación. Activa el GPS.')
+                                );
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all">
+                              🚗 Estoy en camino
+                            </button>
+                          )}
+
                           {job.status === 'asignado' && (
                             <button onClick={() => handleCancelJob(job.id)} disabled={cancellingId === job.id}
                               className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-xl text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50">
@@ -1016,6 +1065,40 @@ export default function ExpertDashboard() {
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-1">Los clientes verán "desde $X/hora" en tu perfil.</p>
+                </div>
+
+                {/* Disponibilidad semanal */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    📅 Días disponibles <span className="text-gray-400 font-normal">(los clientes lo verán en tu perfil)</span>
+                  </label>
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => {
+                      const active = availableDays.includes(d);
+                      return (
+                        <button key={d} type="button"
+                          onClick={() => setAvailableDays(prev => active ? prev.filter(x => x !== d) : [...prev, d])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${active ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300'}`}>
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {availableDays.length > 0 && (
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Desde</label>
+                        <input type="time" value={availableFrom} onChange={e => setAvailableFrom(e.target.value)}
+                          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                      </div>
+                      <span className="text-gray-400 mt-4">–</span>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Hasta</label>
+                        <input type="time" value={availableTo} onChange={e => setAvailableTo(e.target.value)}
+                          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

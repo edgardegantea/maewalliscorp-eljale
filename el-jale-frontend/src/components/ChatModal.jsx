@@ -3,11 +3,16 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import { getEcho } from '../echo';
 
+function generateVideoRoomId(jobId) {
+  return `eljale-job-${jobId}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export default function ChatModal({ job, currentUserId, onClose }) {
   const [messages, setMessages]   = useState([]);
   const [body, setBody]           = useState('');
   const [sending, setSending]     = useState(false);
   const [connected, setConnected] = useState(false);
+  const [videoRoom, setVideoRoom] = useState(null);
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
@@ -102,7 +107,25 @@ export default function ChatModal({ job, currentUserId, onClose }) {
             <p className="text-white font-semibold text-sm truncate">{otherName}</p>
             <p className="text-gray-400 text-xs truncate">{job.title}</p>
           </div>
-          {/* Indicador de conexión en tiempo real */}
+          {/* Video llamada */}
+          <button
+            onClick={() => {
+              const room = generateVideoRoomId(job.id);
+              const url = `https://meet.jit.si/${room}`;
+              setVideoRoom(url);
+              // Enviar link por chat
+              api.post(`/jobs/${job.id}/messages`, {
+                body: `📹 Te invito a una videollamada: ${url}`
+              }).then(res => setMessages(prev => [...prev, res.data])).catch(() => {});
+              window.open(url, '_blank');
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-blue-400 hover:text-white hover:bg-blue-500/20 rounded-lg transition-all shrink-0"
+            title="Iniciar videollamada">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <span className="hidden sm:block">Video</span>
+          </button>
+
+          {/* Indicador de conexión */}
           <div className="flex items-center gap-1.5 shrink-0">
             <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
             <span className="text-gray-400 text-xs hidden sm:block">

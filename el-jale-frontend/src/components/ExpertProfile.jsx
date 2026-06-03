@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api, { storageUrl } from '../api/axios';
 import StarRating from './StarRating';
 import toast from 'react-hot-toast';
+import InstantBookModal from './InstantBookModal';
 
 export default function ExpertProfile() {
   const { id } = useParams();
@@ -13,6 +14,7 @@ export default function ExpertProfile() {
   const [error, setError] = useState('');
   const [favorited, setFavorited] = useState(false);
   const [togglingFav, setTogglingFav] = useState(false);
+  const [showInstantBook, setShowInstantBook] = useState(false);
   const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
   const isClient = currentUser?.role === 'client';
 
@@ -58,6 +60,15 @@ export default function ExpertProfile() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+
+      {showInstantBook && isClient && (
+        <InstantBookModal
+          expert={expert}
+          onClose={() => setShowInstantBook(false)}
+          onBooked={() => navigate('/client-dashboard')}
+        />
+      )}
+
       <nav className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all">
@@ -115,15 +126,24 @@ export default function ExpertProfile() {
                 </div>
               </div>
 
-              {/* Botón de favorito (solo para clientes) */}
+              {/* Acciones del cliente */}
               {isClient && (
-                <button onClick={handleToggleFav} disabled={togglingFav}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${favorited ? 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                  <svg className="w-4 h-4" fill={favorited ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                  </svg>
-                  {favorited ? 'Guardado' : 'Guardar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Reserva instantánea */}
+                  {profile?.is_available && (
+                    <button onClick={() => setShowInstantBook(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-orange-500 text-white hover:bg-orange-600 transition-all shadow-sm shadow-orange-500/30 active:scale-95">
+                      📅 Reservar ahora
+                    </button>
+                  )}
+                  <button onClick={handleToggleFav} disabled={togglingFav}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${favorited ? 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    <svg className="w-4 h-4" fill={favorited ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                    {favorited ? 'Guardado' : 'Guardar'}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -159,6 +179,48 @@ export default function ExpertProfile() {
             </div>
           </div>
         </div>
+
+        {/* Disponibilidad y reserva rápida */}
+        {isClient && profile?.is_available && (
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-gray-900">Disponibilidad</h2>
+              <span className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                Disponible ahora
+              </span>
+            </div>
+
+            {profile?.available_days?.length > 0 ? (
+              <div className="mb-4">
+                <p className="text-xs text-gray-500 font-medium mb-2">Días disponibles</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => {
+                    const active = profile.available_days?.includes(d);
+                    return (
+                      <span key={d} className={`px-3 py-1 rounded-full text-xs font-semibold ${active ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-gray-100 text-gray-400'}`}>
+                        {d}
+                      </span>
+                    );
+                  })}
+                </div>
+                {profile.available_from && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    🕐 Horario: <strong>{profile.available_from} – {profile.available_to}</strong>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 mb-4">Consulta disponibilidad al reservar.</p>
+            )}
+
+            <button onClick={() => setShowInstantBook(true)}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-all active:scale-[0.98] shadow-sm shadow-orange-500/20">
+              📅 Reservar con {expert.name.split(' ')[0]} ahora
+            </button>
+            <p className="text-center text-xs text-gray-400 mt-2">Pago protegido · Sin comisiones por adelantado</p>
+          </div>
+        )}
 
         {/* Portfolio */}
         {expert.portfolio?.length > 0 && (

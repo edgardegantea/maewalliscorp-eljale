@@ -76,7 +76,7 @@ export default function ClientDashboard() {
   const [showMap, setShowMap] = useMapState(false);
   const [categories, setCategories] = useState([]);
   const [myJobs, setMyJobs] = useState([]);
-  const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal', is_urgent: false, payment_method: 'mercadopago' });
+  const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal', is_urgent: false, payment_method: 'mercadopago', is_recurring: false, recurrence: 'weekly' });
   const [photos, setPhotos] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -460,6 +460,38 @@ export default function ClientDashboard() {
                       ))}
                     </div>
                   </div>
+                </div>
+
+                {/* Servicio recurrente */}
+                <div>
+                  <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${newJob.is_recurring ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input type="checkbox" checked={newJob.is_recurring}
+                      onChange={e => setNewJob(p => ({ ...p, is_recurring: e.target.checked }))} className="sr-only" />
+                    <span className="text-xl">🔁</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900">Servicio recurrente</p>
+                      <p className="text-xs text-gray-500">Programa este servicio de forma periódica con el mismo experto</p>
+                    </div>
+                    <div className={`w-10 h-5 rounded-full transition-colors flex-shrink-0 ${newJob.is_recurring ? 'bg-blue-500' : 'bg-gray-300'}`}>
+                      <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${newJob.is_recurring ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </div>
+                  </label>
+                  {newJob.is_recurring && (
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {[
+                        { v: 'weekly',   l: '📅 Semanal',   d: 'Cada 7 días' },
+                        { v: 'biweekly', l: '📆 Quincenal', d: 'Cada 15 días' },
+                        { v: 'monthly',  l: '🗓️ Mensual',   d: 'Una vez al mes' },
+                      ].map(r => (
+                        <label key={r.v} className={`flex flex-col items-center p-2.5 rounded-xl border-2 cursor-pointer text-center transition-all ${newJob.recurrence === r.v ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                          <input type="radio" name="recurrence" value={r.v} checked={newJob.recurrence === r.v}
+                            onChange={() => setNewJob(p => ({ ...p, recurrence: r.v }))} className="sr-only" />
+                          <span className="text-sm font-bold text-gray-900">{r.l}</span>
+                          <span className="text-[10px] text-gray-500">{r.d}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Estimador de precio */}
