@@ -1,23 +1,36 @@
-// src/components/ChatModal.jsx
+// src/components/ChatModal.jsx — Chat en tiempo real con Laravel Reverb
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
+import echo from '../echo';
 
 export default function ChatModal({ job, currentUserId, onClose }) {
-  const [messages, setMessages] = useState([]);
-  const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
+  const [messages, setMessages]   = useState([]);
+  const [body, setBody]           = useState('');
+  const [sending, setSending]     = useState(false);
+  const [connected, setConnected] = useState(false);
   const bottomRef = useRef(null);
-  const inputRef = useRef(null);
-  const pollRef = useRef(null);
+  const inputRef  = useRef(null);
 
+  // ── Cargar historial + suscribir al canal ──────────────────────
   useEffect(() => {
     fetchMessages();
-    pollRef.current = setInterval(fetchMessages, 8000);
     inputRef.current?.focus();
-    // Bloquear scroll del body mientras el modal está abierto
     document.body.style.overflow = 'hidden';
+
+    // Suscribirse al canal privado del chat
+    const channel = echo.private(`chat.${job.id}`)
+      .listen('.message.sent', (data) => {
+        setMessages(prev => {
+          // Evitar duplicados (el remitente ya agregó el mensaje optimistamente)
+          if (prev.find(m => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
+      })
+      .subscribed(() => setConnected(true))
+      .error(() => setConnected(false));
+
     return () => {
-      clearInterval(pollRef.current);
+      echo.leave(`chat.${job.id}`);
       document.body.style.overflow = '';
     };
   }, [job.id]);
@@ -43,14 +56,27 @@ export default function ChatModal({ job, currentUserId, onClose }) {
   const handleSend = async (e) => {
     e.preventDefault();
     if (!body.trim()) return;
+
+    // Optimistic UI — agregar mensaje localmente antes de la respuesta
+    const optimistic = {
+      id:             `tmp-${Date.now()}`,
+      sender_id:      currentUserId,
+      body:           body.trim(),
+      created_at:     new Date().toISOString(),
+      sender:         { id: currentUserId, name: 'Tú' },
+    };
+    setMessages(prev => [...prev, optimistic]);
+    setBody('');
+    inputRef.current?.focus();
+
     setSending(true);
     try {
-      const res = await api.post(`/jobs/${job.id}/messages`, { body });
-      setMessages(prev => [...prev, res.data]);
-      setBody('');
-      inputRef.current?.focus();
-    } catch (err) {
-      console.error('Error al enviar mensaje', err);
+      const res = await api.post(`/jobs/${job.id}/messages`, { body: optimistic.body });
+      // Reemplazar mensaje optimista con el real del servidor
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? res.data : m));
+    } catch {
+      // Si falla, quitar el mensaje optimista
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
     } finally {
       setSending(false);
     }
@@ -59,15 +85,12 @@ export default function ChatModal({ job, currentUserId, onClose }) {
   const otherName = job.client?.name || job.expert?.name || 'Contacto';
 
   return (
-    // Backdrop
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* Fondo difuminado */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" />
 
-      {/* Panel del chat */}
       <div className="relative w-full sm:w-[560px] h-[90vh] sm:h-[600px] bg-white sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
 
         {/* Header */}
@@ -79,9 +102,12 @@ export default function ChatModal({ job, currentUserId, onClose }) {
             <p className="text-white font-semibold text-sm truncate">{otherName}</p>
             <p className="text-gray-400 text-xs truncate">{job.title}</p>
           </div>
+          {/* Indicador de conexión en tiempo real */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse-slow" />
-            <span className="text-gray-400 text-xs hidden sm:block">En línea</span>
+            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+            <span className="text-gray-400 text-xs hidden sm:block">
+              {connected ? 'En vivo' : 'Conectando...'}
+            </span>
           </div>
           <button
             onClick={onClose}
@@ -113,7 +139,10 @@ export default function ChatModal({ job, currentUserId, onClose }) {
                 ${job.budget}
               </span>
             )}
-            <span className="ml-auto text-gray-400">Se actualiza cada 8s</span>
+            <span className="ml-auto text-emerald-500 font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              Tiempo real
+            </span>
           </div>
         </div>
 
@@ -135,6 +164,7 @@ export default function ChatModal({ job, currentUserId, onClose }) {
 
           {messages.map((msg, idx) => {
             const isMe = msg.sender_id === currentUserId;
+            const isOptimistic = String(msg.id).startsWith('tmp-');
             const showAvatar = !isMe && (idx === 0 || messages[idx - 1]?.sender_id !== msg.sender_id);
             return (
               <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -149,13 +179,15 @@ export default function ChatModal({ job, currentUserId, onClose }) {
                   )}
                   <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                     isMe
-                      ? 'bg-brand-primary text-white rounded-br-sm'
+                      ? `bg-brand-primary text-white rounded-br-sm ${isOptimistic ? 'opacity-70' : ''}`
                       : 'bg-slate-100 text-gray-800 rounded-bl-sm'
                   }`}>
                     {msg.body}
                   </div>
-                  <span className={`text-xs text-gray-400 px-1 ${isMe ? 'text-right' : ''}`}>
+                  <span className={`text-xs text-gray-400 px-1 flex items-center gap-1 ${isMe ? 'justify-end' : ''}`}>
                     {new Date(msg.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    {isMe && !isOptimistic && <span className="text-emerald-400">✓</span>}
+                    {isOptimistic && <span className="text-gray-300">⏳</span>}
                   </span>
                 </div>
               </div>

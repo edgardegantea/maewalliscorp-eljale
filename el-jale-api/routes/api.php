@@ -39,6 +39,11 @@ use App\Http\Controllers\PhoneVerificationController;
 Route::post('/mp/webhook',            [MercadoPagoController::class, 'webhook']);
 Route::post('/subscriptions/webhook', [SubscriptionController::class, 'webhook']);
 
+// Broadcasting auth (Reverb/Sanctum)
+Route::post('/broadcasting/auth', function(\Illuminate\Http\Request $request) {
+    return \Illuminate\Support\Facades\Broadcast::auth($request);
+})->middleware('auth:sanctum');
+
 // Autenticación (rate-limited)
 Route::middleware('throttle:auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);

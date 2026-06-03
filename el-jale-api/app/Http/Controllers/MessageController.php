@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Events\MessageSent;
 
 class MessageController extends Controller
 {
@@ -44,6 +45,11 @@ class MessageController extends Controller
             'body'           => $request->body,
         ]);
 
-        return response()->json($message->load('sender:id,name,role'), 201);
+        $message->load('sender:id,name,role');
+
+        // Broadcast en tiempo real via Reverb
+        broadcast(new MessageSent($message));
+
+        return response()->json($message, 201);
     }
 }
