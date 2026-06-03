@@ -136,13 +136,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Estadísticas del cliente
     Route::get('/client-stats', [ServiceJobController::class, 'clientStats']);
 
-    // Verificación de identidad (KYC)
-    Route::post('/kyc/documents',             [IdentityVerificationController::class, 'submitDocuments']);
-    Route::get('/kyc/status',                 [IdentityVerificationController::class, 'myStatus']);
-    Route::get('/admin/kyc/{userId}',                      [IdentityVerificationController::class, 'getDocuments']);
-    Route::get('/admin/kyc/{userId}/document/{field}',     [IdentityVerificationController::class, 'getDocument']);
-    Route::post('/admin/kyc/{userId}/approve',             [IdentityVerificationController::class, 'approve']);
-    Route::post('/admin/kyc/{userId}/reject',              [IdentityVerificationController::class, 'reject']);
+    // Verificación de identidad (KYC) — rutas del experto
+    Route::post('/kyc/documents', [IdentityVerificationController::class, 'submitDocuments']);
+    Route::get('/kyc/status',     [IdentityVerificationController::class, 'myStatus']);
 
     // Membresía Premium
     Route::get('/subscription/status',      [SubscriptionController::class, 'status']);
@@ -203,6 +199,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/experts/{userId}/verify',  [AdminController::class, 'verifyExpert']);
         Route::post('/experts/{userId}/reject',  [AdminController::class, 'rejectExpert']);
+
+        // KYC admin — dentro del grupo /admin
+        Route::get('/kyc/{userId}',                  [IdentityVerificationController::class, 'getDocuments']);
+        Route::get('/kyc/{userId}/document/{field}', [IdentityVerificationController::class, 'getDocument']);
+        Route::post('/kyc/{userId}/approve',         [IdentityVerificationController::class, 'approve']);
+        Route::post('/kyc/{userId}/reject',          [IdentityVerificationController::class, 'reject']);
     });
 
 });
