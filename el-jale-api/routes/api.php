@@ -139,9 +139,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Verificación de identidad (KYC)
     Route::post('/kyc/documents',             [IdentityVerificationController::class, 'submitDocuments']);
     Route::get('/kyc/status',                 [IdentityVerificationController::class, 'myStatus']);
-    Route::get('/admin/kyc/{userId}',         [IdentityVerificationController::class, 'getDocuments']);
-    Route::post('/admin/kyc/{userId}/approve',[IdentityVerificationController::class, 'approve']);
-    Route::post('/admin/kyc/{userId}/reject', [IdentityVerificationController::class, 'reject']);
+    Route::get('/admin/kyc/{userId}',                      [IdentityVerificationController::class, 'getDocuments']);
+    Route::get('/admin/kyc/{userId}/document/{field}',     [IdentityVerificationController::class, 'getDocument']);
+    Route::post('/admin/kyc/{userId}/approve',             [IdentityVerificationController::class, 'approve']);
+    Route::post('/admin/kyc/{userId}/reject',              [IdentityVerificationController::class, 'reject']);
 
     // Membresía Premium
     Route::get('/subscription/status',      [SubscriptionController::class, 'status']);

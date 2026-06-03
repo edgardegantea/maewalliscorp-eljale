@@ -58,12 +58,12 @@ class IdentityVerificationController extends Controller
 
         $profile = ExpertProfile::where('user_id', $userId)->firstOrFail();
 
-        $urls = [];
+        $docs = [];
         foreach (['id_front_path' => 'INE Frente', 'id_back_path' => 'INE Reverso', 'selfie_path' => 'Selfie'] as $field => $label) {
             if ($profile->$field) {
-                $urls[] = [
+                $docs[] = [
                     'label' => $label,
-                    'url'   => Storage::disk('private')->temporaryUrl($profile->$field, now()->addMinutes(30)),
+                    'url'   => url("/api/admin/kyc/{$userId}/document/" . $field),
                 ];
             }
         }
@@ -71,7 +71,8 @@ class IdentityVerificationController extends Controller
         return response()->json([
             'verification_status' => $profile->verification_status,
             'rejection_reason'    => $profile->rejection_reason,
-            'documents'           => $urls,
+            'documents'           => $docs,
+            'user'                => \App\Models\User::select('id','name','email')->find($userId),
         ]);
     }
 
@@ -122,6 +123,30 @@ class IdentityVerificationController extends Controller
         }
 
         return response()->json(['message' => 'Verificación rechazada.']);
+    }
+
+    /** Admin descarga un documento KYC específico */
+    public function getDocument(Request $request, $userId, $field)
+    {
+        if ($request->user()->role !== 'admin') return response()->json(['message' => 'Acceso denegado'], 403);
+
+        $allowed = ['id_front_path', 'id_back_path', 'selfie_path'];
+        if (!in_array($field, $allowed)) return response()->json(['message' => 'Documento no válido'], 400);
+
+        $profile = ExpertProfile::where('user_id', $userId)->firstOrFail();
+        $path    = $profile->$field;
+
+        if (!$path || !Storage::disk('private')->exists($path)) {
+            return response()->json(['message' => 'Documento no encontrado'], 404);
+        }
+
+        $mime = Storage::disk('private')->mimeType($path) ?: 'image/jpeg';
+
+        return response(Storage::disk('private')->get($path), 200, [
+            'Content-Type'        => $mime,
+            'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+            'Cache-Control'       => 'private, no-store',
+        ]);
     }
 
     /** Estado actual del experto autenticado */

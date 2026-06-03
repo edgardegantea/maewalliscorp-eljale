@@ -212,7 +212,21 @@ export default function AdminDashboard() {
     setKycUserId(userId);
     try {
       const r = await api.get(`/admin/kyc/${userId}`);
-      setKycDocs(r.data);
+      const data = r.data;
+
+      // Convertir URLs de documentos a blob URLs (requieren token Bearer)
+      const docsWithBlobs = await Promise.all(
+        (data.documents ?? []).map(async (doc) => {
+          try {
+            const res = await api.get(doc.url.replace(/.*\/api/, '/api'), { responseType: 'blob' });
+            return { ...doc, blobUrl: URL.createObjectURL(res.data) };
+          } catch {
+            return { ...doc, blobUrl: null };
+          }
+        })
+      );
+
+      setKycDocs({ ...data, documents: docsWithBlobs });
     } catch { toast.error('Error al cargar documentos.'); }
   };
 
@@ -847,12 +861,28 @@ export default function AdminDashboard() {
                     <button onClick={() => setKycDocs(null)} className="text-gray-400 hover:text-gray-600">✕</button>
                   </div>
                   <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+                    {kycDocs.user && (
+                      <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm mb-2">
+                        <p className="font-semibold text-gray-800">{kycDocs.user.name}</p>
+                        <p className="text-gray-500 text-xs">{kycDocs.user.email}</p>
+                        <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                          kycDocs.verification_status === 'documentos_enviados' ? 'bg-yellow-100 text-yellow-700' :
+                          kycDocs.verification_status === 'verificado' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>{kycDocs.verification_status}</span>
+                      </div>
+                    )}
                     <div className="grid grid-cols-3 gap-3">
                       {kycDocs.documents?.map(doc => (
                         <div key={doc.label} className="text-center">
-                          <a href={doc.url} target="_blank" rel="noreferrer">
-                            <img src={doc.url} alt={doc.label} className="w-full aspect-video object-cover rounded-lg border hover:opacity-80 transition-opacity" />
-                          </a>
+                          {doc.blobUrl ? (
+                            <a href={doc.blobUrl} target="_blank" rel="noreferrer">
+                              <img src={doc.blobUrl} alt={doc.label} className="w-full aspect-video object-cover rounded-lg border hover:opacity-80 transition-opacity" />
+                            </a>
+                          ) : (
+                            <div className="w-full aspect-video bg-gray-100 rounded-lg border flex items-center justify-center text-gray-400 text-xs">
+                              Sin imagen
+                            </div>
+                          )}
                           <p className="text-xs text-gray-500 mt-1">{doc.label}</p>
                         </div>
                       ))}
