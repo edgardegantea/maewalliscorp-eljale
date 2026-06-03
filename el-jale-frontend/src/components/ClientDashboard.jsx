@@ -14,6 +14,8 @@ import ClientStatsWidget from './ClientStatsWidget';
 import NotificationCenter from './NotificationCenter';
 import PaymentModal from './PaymentModal';
 import PhoneVerification from './PhoneVerification';
+import { lazy, Suspense, useState as useMapState } from 'react';
+const MapaExpertos = lazy(() => import('./MapaExpertos'));
 import ReferralWidget from './ReferralWidget';
 
 const STATUS_CONFIG = {
@@ -24,6 +26,7 @@ const STATUS_CONFIG = {
 };
 
 export default function ClientDashboard() {
+  const [showMap, setShowMap] = useMapState(false);
   const [categories, setCategories] = useState([]);
   const [myJobs, setMyJobs] = useState([]);
   const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal' });
@@ -231,6 +234,10 @@ export default function ClientDashboard() {
             </span>
 
             <div className="flex items-center gap-2">
+              <button onClick={() => setShowMap(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 hover:text-brand-primary hover:bg-orange-50 rounded-xl transition-all">
+                🗺️ Mapa
+              </button>
               <Link to="/explorar" className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 hover:text-brand-primary hover:bg-orange-50 rounded-xl transition-all">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Expertos
@@ -811,6 +818,20 @@ export default function ClientDashboard() {
 
         </div>
       </main>
+
+      {/* Mapa de expertos */}
+      {showMap && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-gray-900 flex items-center justify-center"><svg className="animate-spin w-8 h-8 text-orange-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>}>
+          <MapaExpertos
+            onClose={() => setShowMap(false)}
+            onHire={(expert) => {
+              setShowMap(false);
+              // Redirigir a publicar trabajo con categoría preseleccionada
+              window.location.href = `/client-dashboard?hire=${expert.user_id}&category=${expert.category_id}`;
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

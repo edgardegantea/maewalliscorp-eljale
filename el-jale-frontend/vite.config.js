@@ -13,6 +13,10 @@ export default defineConfig({
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('react-router-dom')) {
             return 'vendor-react';
           }
+          // Leaflet / mapas
+          if (id.includes('leaflet') || id.includes('react-leaflet')) {
+            return 'vendor-leaflet';
+          }
           // Pusher / Echo
           if (id.includes('pusher-js') || id.includes('laravel-echo')) {
             return 'vendor-echo';

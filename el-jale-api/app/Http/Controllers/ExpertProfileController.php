@@ -59,6 +59,50 @@ class ExpertProfileController extends Controller
         return response()->json($experts);
     }
 
+    // Endpoint para mapa — solo expertos con coordenadas
+    public function mapExperts(\Illuminate\Http\Request $request)
+    {
+        $query = \App\Models\ExpertProfile::with(['user:id,name', 'category:id,name'])
+            ->where('is_verified', true)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude');
+
+        if ($request->category_id) $query->where('category_id', $request->category_id);
+        if ($request->available === 'true') $query->where('is_available', true);
+
+        // Filtro por radio (Haversine) si se pasa lat/lng del cliente
+        if ($request->lat && $request->lng && $request->radius) {
+            $lat = (float) $request->lat;
+            $lng = (float) $request->lng;
+            $r   = (float) $request->radius; // km
+            $query->whereRaw(
+                '(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) <= ?',
+                [$lat, $lng, $lat, $r]
+            );
+        }
+
+        $experts = $query->orderByDesc('is_premium')->orderByDesc('average_rating')->get()
+            ->map(fn($p) => [
+                'user_id'          => $p->user->id,
+                'name'             => $p->user->name,
+                'category'         => $p->category?->name,
+                'category_id'      => $p->category_id,
+                'bio'              => $p->bio,
+                'hourly_rate'      => $p->hourly_rate,
+                'average_rating'   => $p->average_rating,
+                'total_reviews'    => $p->total_reviews,
+                'is_available'     => $p->is_available,
+                'is_premium'       => $p->is_premium && $p->premium_expires_at && now()->isBefore($p->premium_expires_at),
+                'city'             => $p->city,
+                'latitude'         => (float) $p->latitude,
+                'longitude'        => (float) $p->longitude,
+                'coverage_radius_km' => $p->coverage_radius_km,
+                'badge_top_rated'  => $p->badge_top_rated,
+            ]);
+
+        return response()->json($experts);
+    }
+
     // Perfil público de un experto
     // Estadísticas del experto autenticado
     public function myStats(\Illuminate\Http\Request $request)

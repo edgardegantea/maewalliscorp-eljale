@@ -59,6 +59,9 @@ Route::get('/experts', [ExpertProfileController::class, 'index']);
 // Perfil público de experto
 Route::get('/experts/{userId}', [ExpertProfileController::class, 'show']);
 
+// Mapa de expertos (requiere coords)
+Route::get('/experts-map', [ExpertProfileController::class, 'mapExperts']);
+
 
 // ==========================================
 // RUTAS PROTEGIDAS (Requieren Token Sanctum)
