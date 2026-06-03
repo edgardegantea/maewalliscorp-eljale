@@ -16,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('reports:weekly')->weeklyOn(1, '08:00'); // Lunes 8am
     })
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->throttleApi();
+        //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -23,7 +23,12 @@ class ServiceJobController extends Controller
         }
 
         $user->load('expertProfile');
-        $profile    = $user->expertProfile;
+        $profile = $user->expertProfile;
+
+        if (!$profile) {
+            return response()->json([], 200); // sin perfil → sin trabajos disponibles
+        }
+
         $categoryId = $profile->category_id;
 
         $query = ServiceJob::with('client:id,name')
