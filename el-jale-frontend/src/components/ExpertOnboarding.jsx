@@ -3,6 +3,7 @@ import { useState } from 'react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import LocationPicker from './LocationPicker';
+import CameraCapture from './CameraCapture';
 
 const STEPS = [
   { id: 1, title: '¡Bienvenido a El Jale!',    icon: '👋' },
@@ -186,34 +187,30 @@ export default function ExpertOnboarding({ user, onComplete }) {
 
           {/* Paso 4 — KYC */}
           {step === 4 && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
                 <p className="font-semibold mb-1">¿Por qué necesitamos esto?</p>
-                <p>La verificación de identidad genera confianza en los clientes y nos permite activar tu cuenta para trabajos con pago seguro.</p>
+                <p>La verificación genera confianza en los clientes y activa tu cuenta para trabajos con pago seguro.</p>
               </div>
               {[
                 { key: 'id_front', label: 'INE / Pasaporte — Frente', icon: '🪪' },
-                { key: 'id_back',  label: 'INE — Reverso', icon: '🔄' },
-                { key: 'selfie',   label: 'Selfie con tu identificación', icon: '🤳' },
+                { key: 'id_back',  label: 'INE — Reverso',            icon: '🔄' },
+                { key: 'selfie',   label: 'Selfie con tu ID',          icon: '🤳' },
               ].map(({ key, label, icon }) => (
-                <div key={key} className="flex items-center gap-3">
-                  {kycPreviews[key] ? (
-                    <div className="relative w-16 h-12 flex-shrink-0">
-                      <img src={kycPreviews[key]} className="w-full h-full object-cover rounded-lg border" alt="" />
-                      <button type="button" onClick={() => { setKycFiles(p => ({ ...p, [key]: null })); setKycPreviews(p => ({ ...p, [key]: null })); }}
-                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center">×</button>
-                    </div>
-                  ) : (
-                    <label className="w-16 h-12 flex-shrink-0 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand-primary hover:bg-orange-50 transition-all">
-                      <span className="text-gray-400 text-[10px]">+ foto</span>
-                      <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={e => handleKycFile(key, e.target.files[0])} />
-                    </label>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{icon} {label}</p>
-                    <p className="text-xs text-gray-400">JPG, PNG — máx. 8 MB</p>
-                  </div>
-                </div>
+                <CameraCapture
+                  key={key}
+                  label={label}
+                  icon={icon}
+                  preview={kycPreviews[key]}
+                  onCapture={(file, url) => {
+                    setKycFiles(p => ({ ...p, [key]: file }));
+                    setKycPreviews(p => ({ ...p, [key]: url }));
+                  }}
+                  onClear={() => {
+                    setKycFiles(p => ({ ...p, [key]: null }));
+                    setKycPreviews(p => ({ ...p, [key]: null }));
+                  }}
+                />
               ))}
             </div>
           )}
