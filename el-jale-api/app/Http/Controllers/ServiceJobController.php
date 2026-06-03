@@ -277,6 +277,9 @@ class ServiceJobController extends Controller
 
         if ($user->role === 'expert') {
             $user->load('expertProfile');
+            if (!$user->expertProfile) {
+                return response()->json(['pending' => 0]);
+            }
             $count = ServiceJob::where('category_id', $user->expertProfile->category_id)
                 ->where('status', 'buscando')
                 ->count();
