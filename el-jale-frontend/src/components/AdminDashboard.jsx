@@ -420,9 +420,29 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-3">{selectedJob.description}</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-400 font-medium">Cliente</p>
+                    {selectedJob.client ? (
+                      <button onClick={() => { setSelectedJob(null); openUserDetail(selectedJob.client.id); }}
+                        className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm mt-0.5 text-left">
+                        {selectedJob.client.name}
+                      </button>
+                    ) : <p className="font-bold text-gray-900 text-sm mt-0.5">—</p>}
+                    {selectedJob.client?.email && <p className="text-[10px] text-gray-400 mt-0.5">{selectedJob.client.email}</p>}
+                    {selectedJob.client?.phone && <p className="text-[10px] text-gray-400">{selectedJob.client.phone}</p>}
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-400 font-medium">Experto</p>
+                    {selectedJob.expert ? (
+                      <button onClick={() => { setSelectedJob(null); openUserDetail(selectedJob.expert.id); }}
+                        className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm mt-0.5 text-left">
+                        {selectedJob.expert.name}
+                      </button>
+                    ) : <p className="font-bold text-gray-400 text-sm mt-0.5 italic">Sin asignar</p>}
+                    {selectedJob.expert?.email && <p className="text-[10px] text-gray-400 mt-0.5">{selectedJob.expert.email}</p>}
+                    {selectedJob.expert?.phone && <p className="text-[10px] text-gray-400">{selectedJob.expert.phone}</p>}
+                  </div>
                   {[
-                    { label: 'Cliente', value: selectedJob.client?.name ?? '—' },
-                    { label: 'Experto', value: selectedJob.expert?.name ?? 'Sin asignar' },
                     { label: 'Oficio', value: selectedJob.category?.name ?? '—' },
                     { label: 'Presupuesto', value: selectedJob.budget ? fmt(selectedJob.budget) : '—' },
                   ].map(s => (
@@ -785,8 +805,22 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3 text-xs text-gray-400">#{j.id}</td>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-[180px] truncate">{j.title}</td>
                           <td className="px-4 py-3 text-xs text-gray-500">{j.category?.name ?? '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{j.client?.name ?? '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{j.expert?.name ?? <span className="text-gray-400 text-xs italic">Sin asignar</span>}</td>
+                          <td className="px-4 py-3">
+                            {j.client ? (
+                              <button onClick={() => openUserDetail(j.client_id ?? j.client?.id)}
+                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium text-left">
+                                {j.client.name}
+                              </button>
+                            ) : <span className="text-gray-400 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {j.expert ? (
+                              <button onClick={() => openUserDetail(j.expert_id ?? j.expert?.id)}
+                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium text-left">
+                                {j.expert.name}
+                              </button>
+                            ) : <span className="text-gray-400 text-xs italic">Sin asignar</span>}
+                          </td>
                           <td className="px-4 py-3 text-sm font-semibold text-gray-900">{j.budget ? fmt(j.budget) : '—'}</td>
                           <td className="px-4 py-3"><Badge label={j.status} color={STATUS_COLOR[j.status]} /></td>
                           <td className="px-4 py-3 text-xs text-gray-400">{new Date(j.created_at).toLocaleDateString('es-MX')}</td>
