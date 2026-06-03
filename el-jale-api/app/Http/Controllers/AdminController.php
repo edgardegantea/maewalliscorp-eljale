@@ -330,6 +330,68 @@ class AdminController extends Controller
         return response()->json(['payments' => $payments, 'totals' => $totals]);
     }
 
+    // ── DETALLE + ACCIONES DE PAGO ────────────────────────────────
+    public function paymentDetail(Request $request, $id)
+    {
+        $this->checkAdmin($request);
+
+        $payment = Payment::with([
+            'serviceJob:id,title,status,budget,client_id,expert_id,category_id,address,created_at',
+            'serviceJob.client:id,name,email,phone',
+            'serviceJob.expert:id,name,email,phone',
+            'serviceJob.category:id,name',
+        ])->findOrFail($id);
+
+        return response()->json($payment);
+    }
+
+    public function releasePayment(Request $request, $id)
+    {
+        $this->checkAdmin($request);
+
+        $payment = Payment::with('serviceJob')->findOrFail($id);
+
+        if ($payment->status !== 'retenido_en_app') {
+            return response()->json(['message' => 'Solo se pueden liberar pagos retenidos.'], 422);
+        }
+
+        $payment->update(['status' => 'liberado_al_experto']);
+        $payment->serviceJob?->update(['status' => 'completado']);
+
+        if ($payment->serviceJob?->expert_id) {
+            Notify::send($payment->serviceJob->expert_id, 'payment_released',
+                '💰 Pago liberado',
+                "Se liberó el pago de {$payment->serviceJob->title}.",
+                $payment->id, 'Payment');
+        }
+
+        return response()->json(['message' => 'Pago liberado al experto.']);
+    }
+
+    public function refundPayment(Request $request, $id)
+    {
+        $this->checkAdmin($request);
+        $request->validate(['reason' => 'nullable|string|max:300']);
+
+        $payment = Payment::with('serviceJob')->findOrFail($id);
+
+        if (!in_array($payment->status, ['retenido_en_app', 'liberado_al_experto'])) {
+            return response()->json(['message' => 'Este pago no se puede reembolsar.'], 422);
+        }
+
+        $payment->update(['status' => 'reembolsado']);
+        $payment->serviceJob?->update(['status' => 'cancelado']);
+
+        if ($payment->serviceJob?->client_id) {
+            Notify::send($payment->serviceJob->client_id, 'payment_refunded',
+                '↩️ Reembolso procesado',
+                "Se reembolsó el pago de \"{$payment->serviceJob->title}\"." . ($request->reason ? " Motivo: {$request->reason}" : ''),
+                $payment->id, 'Payment');
+        }
+
+        return response()->json(['message' => 'Pago reembolsado al cliente.']);
+    }
+
     // ── RESEÑAS ───────────────────────────────────────────────────
     public function reviews(Request $request)
     {

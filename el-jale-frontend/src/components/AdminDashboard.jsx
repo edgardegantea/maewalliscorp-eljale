@@ -168,6 +168,12 @@ export default function AdminDashboard() {
   const [userSearch, setUserSearch] = useState(''); const [userRole, setUserRole] = useState(''); const [userPage, setUserPage] = useState(1);
   const [jobSearch, setJobSearch]   = useState(''); const [jobStatus, setJobStatus] = useState(''); const [jobPage, setJobPage] = useState(1);
   const [paymentStatus, setPaymentStatus] = useState(''); const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentDateFrom, setPaymentDateFrom] = useState('');
+  const [paymentDateTo, setPaymentDateTo]   = useState('');
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentAction, setPaymentAction]   = useState(null); // { type: 'release'|'refund', payment }
+  const [paymentActionReason, setPaymentActionReason] = useState('');
+  const [paymentActionLoading, setPaymentActionLoading] = useState(false);
   const [reviewFilter, setReviewFilter] = useState(''); const [reviewPage, setReviewPage] = useState(1);
   const [notifPage, setNotifPage]   = useState(1);
 
@@ -194,7 +200,7 @@ export default function AdminDashboard() {
   const fetchStats      = async () => { try { const r = await api.get('/admin/stats'); setStats(r.data); } catch {} };
   const fetchUsers      = useCallback(async () => { try { const r = await api.get('/admin/users', { params: { search: userSearch, role: userRole, page: userPage } }); setUsers(r.data.data); setUsersMeta(r.data.meta ?? r.data); } catch {} }, [userSearch, userRole, userPage]);
   const fetchJobs       = useCallback(async () => { try { const r = await api.get('/admin/jobs', { params: { search: jobSearch, status: jobStatus, page: jobPage } }); setJobs(r.data.data); setJobsMeta(r.data.meta ?? r.data); } catch {} }, [jobSearch, jobStatus, jobPage]);
-  const fetchPayments   = useCallback(async () => { try { const r = await api.get('/admin/payments', { params: { status: paymentStatus, page: paymentPage } }); setPayments(r.data.payments.data); setPaymentsMeta(r.data.payments.meta); setPaymentTotals(r.data.totals); } catch {} }, [paymentStatus, paymentPage]);
+  const fetchPayments   = useCallback(async () => { try { const r = await api.get('/admin/payments', { params: { status: paymentStatus, page: paymentPage, date_from: paymentDateFrom || undefined, date_to: paymentDateTo || undefined } }); setPayments(r.data.payments.data); setPaymentsMeta(r.data.payments.meta); setPaymentTotals(r.data.totals); } catch {} }, [paymentStatus, paymentPage, paymentDateFrom, paymentDateTo]);
   const fetchCategories = async () => { try { const r = await api.get('/categories'); setCategories(r.data); } catch {} };
   const fetchDisputes   = async () => { setDisputesLoading(true); try { const r = await api.get('/admin/disputes'); setDisputes(r.data.data ?? r.data); } catch {} finally { setDisputesLoading(false); } };
   const fetchKycUsers   = async () => { setKycLoading(true); try { const r = await api.get('/admin/users?role=expert&per_page=50'); setKycUsers(r.data.data?.filter(u => u.expert_profile?.verification_status === 'documentos_enviados') ?? []); } catch {} finally { setKycLoading(false); } };
@@ -246,6 +252,28 @@ export default function AdminDashboard() {
     catch { toast.error('Error al exportar.'); }
   };
   const handleLogout = async () => { try { await api.post('/logout'); } finally { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); } };
+
+  const openPaymentDetail = async (id) => {
+    try { const r = await api.get(`/admin/payments/${id}`); setSelectedPayment(r.data); }
+    catch { toast.error('Error al cargar el pago.'); }
+  };
+
+  const handlePaymentAction = async () => {
+    if (!paymentAction) return;
+    setPaymentActionLoading(true);
+    try {
+      const endpoint = paymentAction.type === 'release'
+        ? `/admin/payments/${paymentAction.payment.id}/release`
+        : `/admin/payments/${paymentAction.payment.id}/refund`;
+      const r = await api.post(endpoint, { reason: paymentActionReason });
+      toast.success(r.data.message);
+      setPaymentAction(null);
+      setPaymentActionReason('');
+      setSelectedPayment(null);
+      fetchPayments();
+    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+    finally { setPaymentActionLoading(false); }
+  };
 
   const handleDeleteReview = async (id) => {
     if (!window.confirm('¿Eliminar esta reseña?')) return;
@@ -839,40 +867,238 @@ export default function AdminDashboard() {
 
           {/* ── TAB: PAGOS ── */}
           {activeTab === 'payments' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
+
+              {/* Modal detalle de pago */}
+              {selectedPayment && (
+                <Modal title={`Pago #${selectedPayment.id}`} onClose={() => setSelectedPayment(null)} size="lg">
+                  <div className="space-y-5">
+                    {/* Estado y monto */}
+                    <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-5">
+                      <div>
+                        <p className="text-xs text-gray-400 font-medium mb-1">Monto total</p>
+                        <p className="text-3xl font-black text-gray-900">{fmt(selectedPayment.amount)}</p>
+                      </div>
+                      <Badge label={selectedPayment.status?.replace(/_/g,' ')} color={PAYMENT_COLOR[selectedPayment.status]} />
+                    </div>
+
+                    {/* Desglose financiero */}
+                    <div className="bg-white border border-gray-100 rounded-2xl divide-y divide-gray-50">
+                      {[
+                        { label: 'Monto bruto', value: fmt(selectedPayment.amount), bold: false },
+                        { label: 'Comisión plataforma', value: selectedPayment.platform_fee ? `-${fmt(selectedPayment.platform_fee)}` : '—', color: 'text-red-500' },
+                        { label: 'Monto al experto', value: selectedPayment.expert_amount ? fmt(selectedPayment.expert_amount) : '—', color: 'text-emerald-600', bold: true },
+                      ].map(r => (
+                        <div key={r.label} className="flex items-center justify-between px-5 py-3">
+                          <span className="text-sm text-gray-500">{r.label}</span>
+                          <span className={`text-sm font-semibold ${r.color || 'text-gray-900'} ${r.bold ? 'text-base font-black' : ''}`}>{r.value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Info del trabajo */}
+                    {selectedPayment.service_job && (
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold text-gray-400 uppercase">Trabajo relacionado</p>
+                        <div className="bg-gray-50 rounded-2xl p-4">
+                          <p className="font-bold text-gray-900">{selectedPayment.service_job.title}</p>
+                          {selectedPayment.service_job.address && <p className="text-xs text-gray-500 mt-1">📍 {selectedPayment.service_job.address}</p>}
+                          <div className="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase font-semibold">Cliente</p>
+                              <button onClick={() => { setSelectedPayment(null); openUserDetail(selectedPayment.service_job.client?.id); }}
+                                className="text-sm font-semibold text-blue-600 hover:underline text-left">
+                                {selectedPayment.service_job.client?.name ?? '—'}
+                              </button>
+                              <p className="text-xs text-gray-400">{selectedPayment.service_job.client?.email}</p>
+                              {selectedPayment.service_job.client?.phone && <p className="text-xs text-gray-400">{selectedPayment.service_job.client?.phone}</p>}
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase font-semibold">Experto</p>
+                              {selectedPayment.service_job.expert ? (
+                                <button onClick={() => { setSelectedPayment(null); openUserDetail(selectedPayment.service_job.expert?.id); }}
+                                  className="text-sm font-semibold text-blue-600 hover:underline text-left">
+                                  {selectedPayment.service_job.expert?.name}
+                                </button>
+                              ) : <p className="text-sm text-gray-400 italic">Sin asignar</p>}
+                              <p className="text-xs text-gray-400">{selectedPayment.service_job.expert?.email}</p>
+                              {selectedPayment.service_job.expert?.phone && <p className="text-xs text-gray-400">{selectedPayment.service_job.expert?.phone}</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MercadoPago IDs */}
+                    {(selectedPayment.mp_payment_id || selectedPayment.mp_preference_id) && (
+                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-1.5">
+                        <p className="text-xs font-semibold text-blue-800 uppercase">MercadoPago</p>
+                        {selectedPayment.mp_payment_id && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-blue-600">Payment ID</span>
+                            <code className="text-xs bg-white px-2 py-0.5 rounded border border-blue-100 text-blue-800">{selectedPayment.mp_payment_id}</code>
+                          </div>
+                        )}
+                        {selectedPayment.mp_preference_id && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-blue-600">Preference ID</span>
+                            <code className="text-xs bg-white px-2 py-0.5 rounded border border-blue-100 text-blue-800 truncate max-w-[200px]">{selectedPayment.mp_preference_id}</code>
+                          </div>
+                        )}
+                        {selectedPayment.mp_status && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-blue-600">Estado MP</span>
+                            <Badge label={selectedPayment.mp_status} color="bg-blue-100 text-blue-700" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Fechas */}
+                    <div className="grid grid-cols-2 gap-3 text-xs text-gray-500">
+                      <div><span className="font-medium text-gray-700">Creado:</span> {new Date(selectedPayment.created_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                      <div><span className="font-medium text-gray-700">Actualizado:</span> {new Date(selectedPayment.updated_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                    </div>
+
+                    {/* Acciones */}
+                    {selectedPayment.status === 'retenido_en_app' && (
+                      <div className="flex gap-3 pt-2 border-t border-gray-100">
+                        <button onClick={() => setPaymentAction({ type: 'release', payment: selectedPayment })}
+                          className="flex-1 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors">
+                          ✅ Liberar al experto
+                        </button>
+                        <button onClick={() => setPaymentAction({ type: 'refund', payment: selectedPayment })}
+                          className="flex-1 py-2.5 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors">
+                          ↩️ Reembolsar al cliente
+                        </button>
+                      </div>
+                    )}
+                    {selectedPayment.status === 'liberado_al_experto' && (
+                      <button onClick={() => setPaymentAction({ type: 'refund', payment: selectedPayment })}
+                        className="w-full py-2.5 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors mt-2">
+                        ↩️ Forzar reembolso al cliente
+                      </button>
+                    )}
+                  </div>
+                </Modal>
+              )}
+
+              {/* Modal confirmación de acción */}
+              {paymentAction && (
+                <Modal title={paymentAction.type === 'release' ? '✅ Confirmar liberación' : '↩️ Confirmar reembolso'} onClose={() => { setPaymentAction(null); setPaymentActionReason(''); }} size="sm">
+                  <div className="space-y-4">
+                    <div className={`rounded-xl p-4 ${paymentAction.type === 'release' ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+                      <p className="font-bold text-gray-900">{paymentAction.payment.service_job?.title}</p>
+                      <p className={`text-2xl font-black mt-1 ${paymentAction.type === 'release' ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(paymentAction.payment.amount)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {paymentAction.type === 'release'
+                          ? `Se liberará ${fmt(paymentAction.payment.expert_amount ?? paymentAction.payment.amount)} al experto ${paymentAction.payment.service_job?.expert?.name ?? ''}`
+                          : `Se reembolsará ${fmt(paymentAction.payment.amount)} al cliente ${paymentAction.payment.service_job?.client?.name ?? ''}`}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Motivo / notas <span className="font-normal text-gray-400">(opcional)</span></label>
+                      <textarea value={paymentActionReason} onChange={e => setPaymentActionReason(e.target.value)}
+                        placeholder="Ej. Trabajo completado satisfactoriamente..." rows={2}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 resize-none" />
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => { setPaymentAction(null); setPaymentActionReason(''); }}
+                        className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
+                        Cancelar
+                      </button>
+                      <button onClick={handlePaymentAction} disabled={paymentActionLoading}
+                        className={`flex-1 py-2.5 text-sm font-bold text-white rounded-xl transition-colors disabled:opacity-60 ${paymentAction.type === 'release' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-500 hover:bg-red-600'}`}>
+                        {paymentActionLoading ? 'Procesando...' : 'Confirmar'}
+                      </button>
+                    </div>
+                  </div>
+                </Modal>
+              )}
+
+              {/* KPIs */}
               {paymentTotals && (
-                <div className="grid grid-cols-3 gap-4">
-                  <StatCard label="En escrow" value={fmt(paymentTotals.retenido)} icon="🔒" color="bg-amber-100 text-amber-600" />
-                  <StatCard label="Liberado a expertos" value={fmt(paymentTotals.liberado)} icon="✅" color="bg-emerald-100 text-emerald-600" />
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatCard label="En escrow" value={fmt(paymentTotals.retenido)} icon="🔒" color="bg-amber-100 text-amber-600" sub="Fondos retenidos" />
+                  <StatCard label="Liberado a expertos" value={fmt(paymentTotals.liberado)} icon="✅" color="bg-emerald-100 text-emerald-600" sub="Total procesado" />
                   <StatCard label="Reembolsado" value={fmt(paymentTotals.reembolsado)} icon="↩️" color="bg-red-100 text-red-500" />
+                  <StatCard label="Comisiones" value={fmt(paymentTotals.fees ?? 0)} icon="💹" color="bg-purple-100 text-purple-600" sub="Revenue neto" />
                 </div>
               )}
-              <select value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value); setPaymentPage(1); }}
-                className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400/30">
-                <option value="">Todos los estados</option>
-                <option value="retenido_en_app">Retenido</option>
-                <option value="liberado_al_experto">Liberado</option>
-                <option value="reembolsado">Reembolsado</option>
-              </select>
+
+              {/* Filtros */}
+              <div className="flex flex-wrap items-center gap-3 justify-between">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <select value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value); setPaymentPage(1); }}
+                    className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400/30">
+                    <option value="">Todos los estados</option>
+                    <option value="retenido_en_app">🔒 Retenido en escrow</option>
+                    <option value="liberado_al_experto">✅ Liberado al experto</option>
+                    <option value="reembolsado">↩️ Reembolsado</option>
+                    <option value="pendiente">⏳ Pendiente</option>
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <input type="date" value={paymentDateFrom} onChange={e => { setPaymentDateFrom(e.target.value); setPaymentPage(1); }}
+                      className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none" />
+                    <span className="text-gray-400 text-xs">—</span>
+                    <input type="date" value={paymentDateTo} onChange={e => { setPaymentDateTo(e.target.value); setPaymentPage(1); }}
+                      className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none" />
+                  </div>
+                  {(paymentDateFrom || paymentDateTo || paymentStatus) && (
+                    <button onClick={() => { setPaymentStatus(''); setPaymentDateFrom(''); setPaymentDateTo(''); setPaymentPage(1); }}
+                      className="text-xs text-orange-500 hover:underline">✕ Limpiar</button>
+                  )}
+                </div>
+                <button onClick={() => handleExport('payments')}
+                  className="flex items-center gap-1.5 text-xs text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors font-medium">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  Exportar CSV
+                </button>
+              </div>
+
+              {/* Tabla */}
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-100">
                     <thead className="bg-gray-50">
-                      <tr>{['#','Trabajo','Cliente','Experto','Monto','Estado','Fecha'].map(h => (
+                      <tr>{['#','Trabajo','Cliente','Experto','Monto','Comisión','Al experto','Estado','MP ID','Fecha',''].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {payments.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Sin pagos</td></tr>}
+                      {payments.length === 0 && <tr><td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-400">Sin pagos registrados</td></tr>}
                       {payments.map(p => (
-                        <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                        <tr key={p.id} className="hover:bg-gray-50/50 transition-colors group">
                           <td className="px-4 py-3 text-xs text-gray-400">#{p.id}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 max-w-[160px] truncate">{p.service_job?.title ?? '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{p.service_job?.client?.name ?? '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{p.service_job?.expert?.name ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 max-w-[140px] truncate">{p.service_job?.title ?? '—'}</td>
+                          <td className="px-4 py-3">
+                            {p.service_job?.client ? (
+                              <button onClick={() => openUserDetail(p.service_job.client_id ?? p.service_job.client?.id)}
+                                className="text-sm text-blue-600 hover:underline font-medium">{p.service_job.client.name}</button>
+                            ) : <span className="text-gray-400 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {p.service_job?.expert ? (
+                              <button onClick={() => openUserDetail(p.service_job.expert_id ?? p.service_job.expert?.id)}
+                                className="text-sm text-blue-600 hover:underline font-medium">{p.service_job.expert.name}</button>
+                            ) : <span className="text-gray-400 text-xs italic">—</span>}
+                          </td>
                           <td className="px-4 py-3 text-sm font-bold text-gray-900">{fmt(p.amount)}</td>
-                          <td className="px-4 py-3"><Badge label={p.status.replace(/_/g,' ')} color={PAYMENT_COLOR[p.status]} /></td>
+                          <td className="px-4 py-3 text-xs text-red-500 font-medium">{p.platform_fee ? `-${fmt(p.platform_fee)}` : '—'}</td>
+                          <td className="px-4 py-3 text-sm text-emerald-600 font-semibold">{p.expert_amount ? fmt(p.expert_amount) : '—'}</td>
+                          <td className="px-4 py-3"><Badge label={p.status?.replace(/_/g,' ')} color={PAYMENT_COLOR[p.status]} /></td>
+                          <td className="px-4 py-3">
+                            {p.mp_payment_id
+                              ? <code className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">{p.mp_payment_id}</code>
+                              : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
                           <td className="px-4 py-3 text-xs text-gray-400">{new Date(p.created_at).toLocaleDateString('es-MX')}</td>
+                          <td className="px-4 py-3">
+                            <button onClick={() => openPaymentDetail(p.id)}
+                              className="opacity-0 group-hover:opacity-100 px-2.5 py-1 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all font-medium">
+                              Ver
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

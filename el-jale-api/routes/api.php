@@ -200,6 +200,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/experts/{userId}/verify',  [AdminController::class, 'verifyExpert']);
         Route::post('/experts/{userId}/reject',  [AdminController::class, 'rejectExpert']);
 
+        // Pagos — detalle y acciones
+        Route::get('/payments/{id}',             [AdminController::class, 'paymentDetail']);
+        Route::post('/payments/{id}/release',    [AdminController::class, 'releasePayment']);
+        Route::post('/payments/{id}/refund',     [AdminController::class, 'refundPayment']);
+
         // Reseñas
         Route::get('/reviews',                   [AdminController::class, 'reviews']);
         Route::delete('/reviews/{id}',           [AdminController::class, 'deleteReview']);
