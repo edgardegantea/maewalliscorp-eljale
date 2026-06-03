@@ -1,10 +1,12 @@
 // src/components/Register.jsx
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import api from '../api/axios';
 
 export default function Register() {
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'client', category_id: '', experience_years: '' });
+  const [searchParams]  = useSearchParams();
+  const refCode         = searchParams.get('ref') || '';
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: searchParams.get('role') || 'client', category_id: '', experience_years: '', phone: '', referral_code: refCode });
   const [categories, setCategories] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -127,6 +129,22 @@ export default function Register() {
               <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Contraseña</label>
               <input name="password" type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Mín. 8 caracteres" className="input" />
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Teléfono <span className="font-normal text-gray-400">(opcional)</span></label>
+              <input name="phone" type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="+52 55 1234 5678" className="input" />
+            </div>
+            {refCode && (
+              <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                <span>🎁</span>
+                <span>Tienes un código de referido: <strong>{refCode}</strong></span>
+              </div>
+            )}
+            {!refCode && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Código de referido <span className="font-normal text-gray-400">(opcional)</span></label>
+                <input name="referral_code" type="text" value={formData.referral_code} onChange={e => setFormData({ ...formData, referral_code: e.target.value.toUpperCase() })} placeholder="ABC12345" className="input" maxLength={8} />
+              </div>
+            )}
 
             {isExpert && (
               <div className="space-y-4 p-4 bg-orange-50 rounded-2xl border border-orange-100 animate-slide-up">

@@ -13,6 +13,8 @@ import StarRating from './StarRating';
 import ClientStatsWidget from './ClientStatsWidget';
 import NotificationCenter from './NotificationCenter';
 import PaymentModal from './PaymentModal';
+import PhoneVerification from './PhoneVerification';
+import ReferralWidget from './ReferralWidget';
 
 const STATUS_CONFIG = {
   buscando:   { label: 'Buscando Experto', cls: 'badge-buscando' },
@@ -423,6 +425,12 @@ export default function ClientDashboard() {
               >
                 ❤️ Favoritos
               </button>
+              <button
+                onClick={() => setActiveTab('account')}
+                className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${activeTab === 'account' ? 'bg-brand-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                👤 Mi Cuenta
+              </button>
             </div>
 
             {/* Tab: Mis Favoritos */}
@@ -472,6 +480,21 @@ export default function ClientDashboard() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Tab: Mi Cuenta */}
+            {activeTab === 'account' && (
+              <div className="max-w-md space-y-4">
+                <PhoneVerification
+                  user={JSON.parse(localStorage.getItem('user') || '{}')}
+                  onVerified={() => {
+                    const u = JSON.parse(localStorage.getItem('user') || '{}');
+                    u.phone_verified = true;
+                    localStorage.setItem('user', JSON.stringify(u));
+                  }}
+                />
+                <ReferralWidget />
               </div>
             )}
 

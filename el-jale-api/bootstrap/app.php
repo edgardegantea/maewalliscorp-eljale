@@ -13,9 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
         $schedule->command('badges:recalculate')->dailyAt('03:00');
+        $schedule->command('reports:weekly')->weeklyOn(1, '08:00'); // Lunes 8am
     })
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->throttleApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -18,6 +18,7 @@ use App\Http\Controllers\MercadoPagoController;
 use App\Http\Controllers\IdentityVerificationController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\PhoneVerificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,9 +39,11 @@ use App\Http\Controllers\InvoiceController;
 Route::post('/mp/webhook',            [MercadoPagoController::class, 'webhook']);
 Route::post('/subscriptions/webhook', [SubscriptionController::class, 'webhook']);
 
-// Autenticación
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+// Autenticación (rate-limited)
+Route::middleware('throttle:auth')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+});
 
 // Catálogo de Oficios
 Route::get('/categories', [CategoryController::class, 'index']);
@@ -141,6 +144,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Facturas PDF
     Route::get('/jobs/{id}/invoice',        [InvoiceController::class, 'download']);
+
+    // Verificación de teléfono (OTP)
+    Route::middleware('throttle:otp')->group(function () {
+        Route::post('/phone/send-otp',  [PhoneVerificationController::class, 'sendOtp']);
+        Route::post('/phone/verify',    [PhoneVerificationController::class, 'verifyOtp']);
+    });
+
+    // FCM token del dispositivo
+    Route::post('/fcm-token',           [PhoneVerificationController::class, 'saveFcmToken']);
+
+    // Referidos
+    Route::get('/referrals',            [PhoneVerificationController::class, 'referralStatus']);
 
     // MercadoPago
     Route::post('/jobs/{id}/mp/preference',      [MercadoPagoController::class, 'createPreference']);

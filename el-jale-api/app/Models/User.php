@@ -15,12 +15,20 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role', // Añadimos el rol
+        'role',
+        'phone',
+        'phone_verified',
+        'phone_otp',
+        'phone_otp_expires_at',
+        'fcm_token',
+        'referral_code',
+        'referred_by',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'phone_otp',
     ];
 
     protected function casts(): array
@@ -46,5 +54,15 @@ class User extends Authenticatable
     public function expertJobs()
     {
         return $this->hasMany(ServiceJob::class, 'expert_id');
+    }
+
+    public function referralCredits()
+    {
+        return $this->hasMany(\App\Models\ReferralCredit::class);
+    }
+
+    public function referredUsers()
+    {
+        return $this->hasMany(User::class, 'referred_by');
     }
 }

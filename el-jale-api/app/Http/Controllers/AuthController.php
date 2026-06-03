@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\ExpertProfile;
+use App\Models\ReferralCredit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 use App\Mail\WelcomeMail;
 
 class AuthController extends Controller
@@ -19,16 +21,41 @@ class AuthController extends Controller
             'email'            => 'required|string|email|max:255|unique:users',
             'password'         => 'required|string|min:8',
             'role'             => 'required|in:client,expert',
+            'phone'            => 'nullable|string|max:20',
             'category_id'      => 'required_if:role,expert|exists:categories,id',
             'experience_years' => 'required_if:role,expert|integer|min:0',
+            'referral_code'    => 'nullable|string|exists:users,referral_code',
         ]);
 
+        // Generar código de referido único
+        do {
+            $code = strtoupper(Str::random(8));
+        } while (User::where('referral_code', $code)->exists());
+
+        // Buscar referidor
+        $referrer = null;
+        if ($request->referral_code) {
+            $referrer = User::where('referral_code', $request->referral_code)->first();
+        }
+
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-            'role'     => $request->role,
+            'name'          => $request->name,
+            'email'         => $request->email,
+            'password'      => Hash::make($request->password),
+            'role'          => $request->role,
+            'phone'         => $request->phone,
+            'referral_code' => $code,
+            'referred_by'   => $referrer?->id,
         ]);
+
+        // Otorgar crédito al referidor
+        if ($referrer) {
+            ReferralCredit::create([
+                'user_id'          => $referrer->id,
+                'referred_user_id' => $user->id,
+                'amount'           => 50.00,
+            ]);
+        }
 
         if ($user->role === 'expert') {
             $expertCount     = ExpertProfile::count();

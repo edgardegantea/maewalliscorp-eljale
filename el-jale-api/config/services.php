@@ -35,4 +35,29 @@ return [
         ],
     ],
 
+    // Firebase Cloud Messaging
+    'fcm' => [
+        'server_key' => env('FCM_SERVER_KEY'),
+        'project_id' => env('FCM_PROJECT_ID'),
+    ],
+
+    // SMS Provider
+    'sms' => [
+        'provider' => env('SMS_PROVIDER', 'vonage'), // vonage | twilio
+    ],
+
+    // Vonage (Nexmo)
+    'vonage' => [
+        'key'    => env('VONAGE_API_KEY'),
+        'secret' => env('VONAGE_API_SECRET'),
+        'sms_from' => env('VONAGE_SMS_FROM', 'ElJale'),
+    ],
+
+    // Twilio
+    'twilio' => [
+        'sid'   => env('TWILIO_SID'),
+        'token' => env('TWILIO_TOKEN'),
+        'from'  => env('TWILIO_FROM'),
+    ],
+
 ];

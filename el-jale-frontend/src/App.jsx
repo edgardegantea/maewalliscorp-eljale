@@ -9,6 +9,8 @@ import PrivateRoute from './components/PrivateRoute';
 import AdminDashboard from './components/AdminDashboard';
 import ExpertProfile from './components/ExpertProfile';
 import ExploreExperts from './components/ExploreExperts';
+import CategoryPage from './components/CategoryPage';
+import { useFcm } from './hooks/useFcm';
 
 // Redirige al dashboard si ya está logueado
 function PublicRoute({ children }) {
@@ -22,6 +24,9 @@ function PublicRoute({ children }) {
 }
 
 function App() {
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  useFcm(user); // Registrar FCM token si el usuario está logueado
+
   return (
     <Router>
       <Routes>
@@ -32,6 +37,9 @@ function App() {
 
         {/* Perfiles públicos (no requieren login) */}
         <Route path="/expertos/:id" element={<ExpertProfile />} />
+
+        {/* Páginas SEO por categoría */}
+        <Route path="/servicios/:categoria" element={<CategoryPage />} />
 
         {/* Dashboards protegidos */}
         <Route path="/expert-dashboard" element={<PrivateRoute role="expert"><ExpertDashboard /></PrivateRoute>} />

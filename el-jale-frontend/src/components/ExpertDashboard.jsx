@@ -13,6 +13,8 @@ import IdentityVerification from './IdentityVerification';
 import LocationPicker from './LocationPicker';
 import ExpertOnboarding from './ExpertOnboarding';
 import PremiumCard from './PremiumCard';
+import PhoneVerification from './PhoneVerification';
+import ReferralWidget from './ReferralWidget';
 
 const STATUS_CONFIG = {
   asignado:   { label: 'En Progreso',  color: 'bg-blue-100 text-blue-800' },
@@ -955,6 +957,16 @@ export default function ExpertDashboard() {
 
             {/* Membresía Premium */}
             <PremiumCard />
+
+            {/* Verificación de teléfono */}
+            <PhoneVerification user={user} onVerified={() => {
+              const u = JSON.parse(localStorage.getItem('user') || '{}');
+              u.phone_verified = true;
+              localStorage.setItem('user', JSON.stringify(u));
+            }} />
+
+            {/* Referidos */}
+            <ReferralWidget />
 
             {/* Verificación de identidad */}
             <IdentityVerification />

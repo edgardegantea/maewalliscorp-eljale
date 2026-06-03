@@ -4,13 +4,13 @@ import { Link } from 'react-router-dom';
 import api from '../api/axios';
 
 const SERVICES = [
-  { icon: '🔧', name: 'Plomería',           desc: 'Fugas, instalaciones, tuberías' },
-  { icon: '⚡', name: 'Electricidad',        desc: 'Cortocircuitos, tableros, instalaciones' },
-  { icon: '🏗️', name: 'Albañilería',         desc: 'Construcción, remodelación, acabados' },
-  { icon: '🎨', name: 'Pintura',             desc: 'Interior, exterior, acabados finos' },
-  { icon: '❄️', name: 'Aire Acondicionado',  desc: 'Instalación y mantenimiento' },
-  { icon: '🪵', name: 'Carpintería',         desc: 'Muebles, puertas, ventanas' },
-  { icon: '⚙️', name: 'Herrería',            desc: 'Rejas, puertas, trabajos en metal' },
+  { icon: '🔧', name: 'Plomería',           desc: 'Fugas, instalaciones, tuberías',           slug: 'fontaneros' },
+  { icon: '⚡', name: 'Electricidad',        desc: 'Cortocircuitos, tableros, instalaciones',  slug: 'electricistas' },
+  { icon: '🏗️', name: 'Albañilería',         desc: 'Construcción, remodelación, acabados',     slug: 'albanileria' },
+  { icon: '🎨', name: 'Pintura',             desc: 'Interior, exterior, acabados finos',       slug: 'pintores' },
+  { icon: '❄️', name: 'Aire Acondicionado',  desc: 'Instalación y mantenimiento',              slug: 'aire-acondicionado' },
+  { icon: '🪵', name: 'Carpintería',         desc: 'Muebles, puertas, ventanas',               slug: 'carpinteros' },
+  { icon: '⚙️', name: 'Herrería',            desc: 'Rejas, puertas, trabajos en metal',        slug: 'herreria' },
 ];
 
 const HOW_IT_WORKS = [
@@ -146,7 +146,7 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
             {SERVICES.map(s => (
-              <Link to="/register" key={s.name}
+              <Link to={`/servicios/${s.slug}`} key={s.name}
                 className="card p-4 text-center hover:shadow-card-hover hover:-translate-y-1 transition-all duration-200 group">
                 <span className="text-3xl block mb-2">{s.icon}</span>
                 <p className="font-bold text-sm text-gray-900 group-hover:text-brand-primary transition-colors">{s.name}</p>
