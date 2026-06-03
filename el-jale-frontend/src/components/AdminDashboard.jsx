@@ -218,7 +218,7 @@ export default function AdminDashboard() {
       const docsWithBlobs = await Promise.all(
         (data.documents ?? []).map(async (doc) => {
           try {
-            const res = await api.get(doc.url.replace(/.*\/api/, '/api'), { responseType: 'blob' });
+            const res = await api.get(doc.path, { responseType: 'blob' });
             return { ...doc, blobUrl: URL.createObjectURL(res.data) };
           } catch {
             return { ...doc, blobUrl: null };

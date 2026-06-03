@@ -63,7 +63,7 @@ class IdentityVerificationController extends Controller
             if ($profile->$field) {
                 $docs[] = [
                     'label' => $label,
-                    'url'   => url("/api/admin/kyc/{$userId}/document/" . $field),
+                    'path'  => "/admin/kyc/{$userId}/document/{$field}",
                 ];
             }
         }
