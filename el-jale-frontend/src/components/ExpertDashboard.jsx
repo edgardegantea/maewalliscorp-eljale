@@ -648,11 +648,21 @@ export default function ExpertDashboard() {
                             </button>
                           )}
                           {job.status === 'completado' && job.payment?.status === 'liberado_al_experto' && (
-                            <a href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/jobs/${job.id}/invoice`}
-                              target="_blank" rel="noreferrer"
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await api.get(`/jobs/${job.id}/invoice`, { responseType: 'blob' });
+                                  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                                  const a   = document.createElement('a');
+                                  a.href     = url;
+                                  a.download = `recibo-eljale-${job.id}.pdf`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                } catch { toast.error('No se pudo descargar el recibo.'); }
+                              }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
                               📄 Descargar recibo
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
