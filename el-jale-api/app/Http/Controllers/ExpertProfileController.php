@@ -120,10 +120,11 @@ class ExpertProfileController extends Controller
             // Auto-crear perfil con categoría por defecto
             $defaultCategory = \App\Models\Category::first();
             $profile = \App\Models\ExpertProfile::create([
-                'user_id'     => $user->id,
-                'category_id' => $defaultCategory?->id ?? 1,
-                'is_verified' => false,
-                'is_available'=> true,
+                'user_id'          => $user->id,
+                'category_id'      => $defaultCategory?->id ?? 1,
+                'experience_years' => 0,
+                'is_verified'      => false,
+                'is_available'     => true,
             ]);
         }
 
