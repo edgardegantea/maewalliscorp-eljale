@@ -29,15 +29,14 @@ class IdentityVerificationController extends Controller
             return response()->json(['message' => 'Tu identidad ya está verificada.'], 400);
         }
 
-        // Eliminar documentos anteriores
         foreach (['id_front_path', 'id_back_path', 'selfie_path'] as $field) {
             if ($profile->$field) Storage::disk('private')->delete($profile->$field);
         }
 
         $profile->update([
-            'id_front_path'       => $request->file('id_front')->store("kyc/{$user->id}", 'private'),
-            'id_back_path'        => $request->file('id_back')->store("kyc/{$user->id}", 'private'),
-            'selfie_path'         => $request->file('selfie')->store("kyc/{$user->id}", 'private'),
+            'id_front_path'       => $request->file('id_front')->store("{$user->id}", 'private'),
+            'id_back_path'        => $request->file('id_back')->store("{$user->id}", 'private'),
+            'selfie_path'         => $request->file('selfie')->store("{$user->id}", 'private'),
             'verification_status' => 'documentos_enviados',
             'rejection_reason'    => null,
         ]);
