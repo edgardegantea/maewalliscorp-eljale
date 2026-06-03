@@ -26,6 +26,52 @@ const STATUS_CONFIG = {
   cancelado:  { label: 'Cancelado',        cls: 'badge-cancelado' },
 };
 
+const TIMELINE_STEPS = [
+  { key: 'publicado', label: 'Publicado',   icon: '📋' },
+  { key: 'bids',      label: 'Cotizaciones',icon: '💬' },
+  { key: 'asignado',  label: 'En progreso', icon: '🔧' },
+  { key: 'completado',label: 'Completado',  icon: '✅' },
+];
+
+function JobTimeline({ status, bidsCount = 0 }) {
+  const activeIndex = status === 'buscando' ? 1 : status === 'asignado' ? 2 : status === 'completado' ? 3 : -1;
+  if (status === 'cancelado') return (
+    <div className="flex items-center gap-2 mt-3 text-xs text-red-500 font-medium">
+      <span className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-[10px]">✕</span>
+      Trabajo cancelado
+    </div>
+  );
+  return (
+    <div className="flex items-center gap-1 mt-3">
+      {TIMELINE_STEPS.map((step, i) => {
+        const done = i < activeIndex;
+        const active = i === activeIndex;
+        return (
+          <div key={step.key} className="flex items-center gap-1 flex-1 min-w-0">
+            <div className={`flex flex-col items-center gap-0.5 ${i < TIMELINE_STEPS.length - 1 ? 'flex-1' : ''}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
+                done   ? 'bg-emerald-500 text-white' :
+                active ? 'bg-orange-500 text-white ring-2 ring-orange-200' :
+                         'bg-gray-100 text-gray-400'
+              }`}>
+                {done ? '✓' : step.icon}
+              </div>
+              <span className={`text-[9px] font-semibold leading-tight text-center ${active ? 'text-orange-600' : done ? 'text-emerald-600' : 'text-gray-400'}`}>
+                {step.key === 'bids' && active && bidsCount > 0
+                  ? `${bidsCount} oferta${bidsCount > 1 ? 's' : ''}`
+                  : step.label}
+              </span>
+            </div>
+            {i < TIMELINE_STEPS.length - 1 && (
+              <div className={`h-px flex-1 mb-3.5 ${done ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ClientDashboard() {
   const [showMap, setShowMap] = useMapState(false);
   const [categories, setCategories] = useState([]);
@@ -623,7 +669,9 @@ export default function ClientDashboard() {
                           </span>
                         </div>
 
-                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">{job.description}</p>
+                        <JobTimeline status={job.status} bidsCount={job.bids_count ?? 0} />
+
+                        <p className="text-sm text-gray-600 mt-3 mb-3 line-clamp-2">{job.description}</p>
 
                         <div className="flex flex-wrap gap-4 text-sm mb-3">
                           {job.budget && (
@@ -686,10 +734,23 @@ export default function ClientDashboard() {
                         {/* Acciones según estado */}
                         <div className="mt-3 flex flex-wrap gap-2">
                           {job.status === 'buscando' && (
-                            <button onClick={() => setBidsJob(job)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl text-white bg-brand-primary hover:bg-orange-600 transition-all">
-                              💬 Ver cotizaciones
-                            </button>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button onClick={() => setBidsJob(job)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-brand-primary hover:bg-orange-600 transition-all">
+                                💬 Ver cotizaciones
+                                {job.bids_count > 0 && (
+                                  <span className="bg-white/30 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                                    {job.bids_count}
+                                  </span>
+                                )}
+                              </button>
+                              {(!job.bids_count || job.bids_count === 0) && (
+                                <span className="text-xs text-gray-400 italic">
+                                  <span className="w-1.5 h-1.5 bg-amber-400 rounded-full inline-block mr-1 animate-pulse" />
+                                  Notificando expertos...
+                                </span>
+                              )}
+                            </div>
                           )}
 
                           {(job.status === 'asignado' || job.status === 'completado') && (
@@ -868,19 +929,40 @@ export default function ClientDashboard() {
               <h4 className="font-bold text-sm text-gray-900 mb-4">¿Cómo funciona?</h4>
               <ol className="space-y-3">
                 {[
-                  { icon: '📝', text: 'Publicas tu Jale con el problema y presupuesto.' },
-                  { icon: '🔍', text: 'Un experto verificado lo acepta.' },
-                  { icon: '🔧', text: 'El experto realiza el trabajo.' },
-                  { icon: '✅', text: 'Confirmas y se libera el pago.' },
+                  { icon: '📝', text: 'Publicas tu Jale con el problema y presupuesto.', time: 'Gratis · 2 min' },
+                  { icon: '💬', text: 'Expertos verificados envían cotizaciones.', time: 'En ~30 min' },
+                  { icon: '🤝', text: 'Eliges el experto que más te conviene.', time: 'Compara y decide' },
+                  { icon: '🔧', text: 'El experto realiza el trabajo.', time: 'Según tu fecha' },
+                  { icon: '✅', text: 'Confirmas y se libera el pago.', time: 'Pago 100% seguro' },
                 ].map((step, i) => (
                   <li key={i} className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 text-sm">
                       {step.icon}
                     </div>
-                    <p className="text-xs text-gray-600 leading-relaxed mt-1">{step.text}</p>
+                    <div>
+                      <p className="text-xs text-gray-700 leading-relaxed">{step.text}</p>
+                      <p className="text-[10px] text-orange-500 font-semibold mt-0.5">{step.time}</p>
+                    </div>
                   </li>
                 ))}
               </ol>
+            </div>
+
+            {/* Tips para obtener mejores ofertas */}
+            <div className="card p-5 border border-amber-100 bg-amber-50/50">
+              <h4 className="font-bold text-sm text-gray-900 mb-3">💡 Tips para mejores ofertas</h4>
+              <ul className="space-y-2">
+                {[
+                  'Agrega fotos del problema para recibir cotizaciones más precisas',
+                  'Describe bien el trabajo para que el experto llegue preparado',
+                  'Pon un presupuesto real — así filtras a los expertos adecuados',
+                ].map((tip, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    {tip}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
 

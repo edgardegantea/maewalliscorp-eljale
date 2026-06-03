@@ -6,12 +6,26 @@ import toast from 'react-hot-toast';
 
 const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX')}` : 'A convenir';
 
+function getBestBidId(bids) {
+  if (!bids.length) return null;
+  // Score: rating * 0.4 + (1 - normalized_price) * 0.6
+  const prices = bids.map(b => b.amount ? Number(b.amount) : null).filter(Boolean);
+  const maxPrice = Math.max(...prices, 1);
+  const scored = bids.map(b => {
+    const priceScore = b.amount ? (1 - Number(b.amount) / maxPrice) : 0.5;
+    const ratingScore = (b.expert.avg_rating ?? 0) / 5;
+    return { id: b.id, score: ratingScore * 0.5 + priceScore * 0.5 };
+  });
+  return scored.sort((a, b) => b.score - a.score)[0]?.id ?? null;
+}
+
 export default function BidsModal({ job, onClose, onAccepted }) {
   const [bids, setBids]         = useState([]);
   const [loading, setLoading]   = useState(true);
   const [accepting, setAccepting] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); // list | compare
-  const [compared, setCompared] = useState([]);     // hasta 3 bids para comparar
+  const [viewMode, setViewMode] = useState('list');
+  const [compared, setCompared] = useState([]);
+  const bestBidId = getBestBidId(bids);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -136,7 +150,14 @@ export default function BidsModal({ job, onClose, onAccepted }) {
           )}
 
           {bids.map(bid => (
-            <div key={bid.id} className="card p-5 hover:shadow-card-hover transition-all">
+            <div key={bid.id} className={`card p-5 hover:shadow-card-hover transition-all relative ${bid.id === bestBidId ? 'ring-2 ring-orange-400 ring-offset-1' : ''}`}>
+              {bid.id === bestBidId && (
+                <div className="absolute -top-2.5 left-5">
+                  <span className="bg-orange-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm">
+                    ⭐ RECOMENDADO
+                  </span>
+                </div>
+              )}
               <div className="flex items-start gap-4">
                 <div className="w-11 h-11 rounded-2xl bg-brand-primary flex items-center justify-center text-white font-black text-lg shrink-0">
                   {bid.expert.name[0].toUpperCase()}

@@ -274,16 +274,36 @@ export default function ExpertDashboard() {
       {bidJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setBidJob(null); }}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" />
-          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl animate-slide-up">
-            <div className="bg-gradient-to-r from-brand-dark to-slate-800 px-6 py-4 rounded-t-2xl">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-brand-dark to-slate-800 px-6 py-4 rounded-t-2xl sticky top-0 z-10">
               <h3 className="font-bold text-white">Enviar cotización</h3>
               <p className="text-gray-300 text-xs mt-0.5 truncate">{bidJob.title}</p>
+              {bidJob.budget && (
+                <p className="text-brand-accent text-xs font-semibold mt-1">
+                  💰 Presupuesto del cliente: ${Number(bidJob.budget).toLocaleString('es-MX')}
+                </p>
+              )}
             </div>
             <form onSubmit={handleSubmitBid} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tu mensaje al cliente *</label>
-                <textarea rows={3} required value={bidForm.message} onChange={e => setBidForm({...bidForm, message: e.target.value})}
-                  maxLength={500} placeholder="Preséntate, describe tu experiencia con este tipo de trabajo y cómo lo resolverías..."
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Respuestas rápidas</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {[
+                    { label: '👋 Presentación', text: `Hola, soy ${user?.name}. Tengo experiencia con este tipo de trabajo y puedo resolverlo de forma rápida y profesional. ¿Cuándo le queda bien que pase a revisar?` },
+                    { label: '⚡ Disponible hoy', text: `Hola, tengo disponibilidad hoy mismo para atenderle. Cuento con todo el equipo necesario. ¿A qué hora le conviene?` },
+                    { label: '🔍 Diagnóstico gratis', text: `Hola, ofrezco diagnóstico sin costo. Una vez que revise el problema le doy la cotización exacta. ¿Cuándo puedo pasar?` },
+                    { label: '✅ Trabajo garantizado', text: `Hola, mi trabajo tiene garantía. Si algo no queda bien, regreso sin costo extra. Con gusto le ayudo.` },
+                  ].map(t => (
+                    <button key={t.label} type="button"
+                      onClick={() => setBidForm(f => ({ ...f, message: t.text }))}
+                      className="text-xs font-medium text-gray-600 bg-gray-100 hover:bg-orange-50 hover:text-brand-primary border border-gray-200 hover:border-orange-200 px-2.5 py-1.5 rounded-xl transition-all">
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tu mensaje *</label>
+                <textarea rows={4} required value={bidForm.message} onChange={e => setBidForm({...bidForm, message: e.target.value})}
+                  maxLength={500} placeholder="Preséntate, describe tu experiencia y cómo resolverías el problema..."
                   className="input resize-none" />
                 <p className="text-xs text-gray-400 text-right mt-0.5">{bidForm.message.length}/500</p>
               </div>
@@ -294,11 +314,11 @@ export default function ExpertDashboard() {
                   <input type="number" min="0" step="0.01" value={bidForm.amount} onChange={e => setBidForm({...bidForm, amount: e.target.value})}
                     placeholder="0.00" className="input pl-7" />
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Deja vacío para cotizar al ver el trabajo.</p>
+                <p className="text-xs text-gray-400 mt-1">Deja vacío para cotizar al ver el trabajo en persona.</p>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setBidJob(null)} className="btn-secondary flex-1">Cancelar</button>
-                <button type="submit" disabled={submittingBid} className="btn-primary flex-1">
+                <button type="submit" disabled={submittingBid || !bidForm.message.trim()} className="btn-primary flex-1">
                   {submittingBid ? 'Enviando...' : '📤 Enviar cotización'}
                 </button>
               </div>
@@ -511,45 +531,66 @@ export default function ExpertDashboard() {
                   j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   j.description.toLowerCase().includes(searchQuery.toLowerCase())
                 ).map(job => (
-                  <div key={job.id} className={`flex flex-col bg-white rounded-lg shadow-md border-l-4 overflow-hidden hover:shadow-lg transition-shadow ${job.urgency === 'urgente' ? 'border-red-500' : 'border-brand-primary'}`}>
+                  <div key={job.id} className={`flex flex-col bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${job.urgency === 'urgente' ? 'border-red-200 ring-1 ring-red-100' : 'border-gray-100'}`}>
                     <div className="p-5 flex-grow">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-lg font-bold text-gray-900 pr-2">{job.title}</h3>
+                      <div className="flex justify-between items-start mb-2 gap-2">
+                        <h3 className="text-base font-bold text-gray-900 leading-tight">{job.title}</h3>
                         {job.urgency === 'urgente'
-                          ? <span className="flex-shrink-0 px-2 py-1 text-xs font-bold text-red-700 bg-red-100 rounded-full">🚨 Urgente</span>
-                          : <span className="flex-shrink-0 px-2 py-1 text-xs font-bold text-brand-dark bg-brand-accent rounded">Nuevo</span>
+                          ? <span className="flex-shrink-0 px-2 py-1 text-[10px] font-black text-red-700 bg-red-100 rounded-full">🚨 URGENTE</span>
+                          : <span className="flex-shrink-0 px-2 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">● Nuevo</span>
                         }
                       </div>
-                      <p className="text-sm text-gray-600 mb-4 line-clamp-3">{job.description}</p>
 
-                      <div className="text-sm space-y-1">
-                        <div>
-                          <span className="font-medium text-gray-900">Cliente:</span>{' '}
-                          <span className="text-gray-600">{job.client?.name}</span>
-                        </div>
+                      <p className="text-xs text-gray-400 mb-2">
+                        🕒 {(() => {
+                          const mins = Math.floor((Date.now() - new Date(job.created_at)) / 60000);
+                          return mins < 60 ? `Hace ${mins} min` : mins < 1440 ? `Hace ${Math.floor(mins/60)}h` : `Hace ${Math.floor(mins/1440)}d`;
+                        })()}
+                        {job.address && ` · 📍 ${job.address}`}
+                      </p>
+
+                      <p className="text-sm text-gray-600 mb-4 line-clamp-2">{job.description}</p>
+
+                      <div className="grid grid-cols-2 gap-2 mb-3">
                         {job.budget && (
-                          <div>
-                            <span className="font-medium text-gray-900">Presupuesto:</span>{' '}
-                            <span className="text-green-600 font-bold">${job.budget}</span>
+                          <div className="bg-emerald-50 rounded-xl px-3 py-2">
+                            <p className="text-[10px] text-gray-400 font-medium">Presupuesto</p>
+                            <p className="text-sm font-black text-emerald-600">${Number(job.budget).toLocaleString('es-MX')}</p>
                           </div>
                         )}
                         {job.preferred_date && (
-                          <div>
-                            <span className="font-medium text-gray-900">📅 Fecha:</span>{' '}
-                            <span>{new Date(job.preferred_date + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                            {job.preferred_time && <span> a las {job.preferred_time.slice(0,5)}</span>}
+                          <div className="bg-blue-50 rounded-xl px-3 py-2">
+                            <p className="text-[10px] text-gray-400 font-medium">Fecha</p>
+                            <p className="text-xs font-bold text-blue-700">
+                              {new Date(job.preferred_date + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })}
+                            </p>
                           </div>
                         )}
                       </div>
+
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-[10px] font-bold text-orange-600">
+                          {job.client?.name?.[0]?.toUpperCase()}
+                        </div>
+                        <span>{job.client?.name}</span>
+                        {job.client?.avg_rating > 0 && (
+                          <span className="text-amber-500 font-semibold">⭐ {Number(job.client.avg_rating).toFixed(1)}</span>
+                        )}
+                        {job.payment_method && (
+                          <span className="ml-auto text-[10px] bg-gray-100 px-2 py-0.5 rounded-full font-medium">
+                            {job.payment_method === 'mercadopago' ? '💳 MP' : job.payment_method === 'efectivo' ? '💵 Efectivo' : job.payment_method}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex gap-2">
+                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-100 flex gap-2">
                       <button onClick={() => setBidJob(job)}
                         className="flex-1 text-sm font-semibold text-white bg-brand-primary hover:bg-orange-600 py-2 rounded-xl transition-all active:scale-95">
                         💬 Cotizar
                       </button>
                       <button onClick={() => handleAcceptJob(job.id)}
-                        className="flex-1 text-sm font-medium text-brand-dark bg-white hover:bg-gray-100 py-2 rounded-xl border border-gray-200 transition-all">
-                        Aceptar directo
+                        className="px-4 text-sm font-medium text-gray-700 bg-white hover:bg-gray-100 py-2 rounded-xl border border-gray-200 transition-all">
+                        ✓ Acepto
                       </button>
                     </div>
                   </div>
@@ -882,6 +923,44 @@ export default function ExpertDashboard() {
         {/* Tab: Mi Perfil */}
         {activeTab === 'profile' && (
           <div className="max-w-2xl space-y-6">
+
+            {/* Completeness indicator */}
+            {(() => {
+              const profile = user?.expert_profile;
+              const checks = [
+                { label: 'Bio escrita',            done: bio?.trim().length > 30 },
+                { label: 'Tarifa por hora',         done: !!hourlyRate },
+                { label: 'Zona de cobertura',       done: !!(location.city && location.state) },
+                { label: 'Identidad verificada',    done: !!profile?.is_verified },
+                { label: 'Foto en portfolio',       done: portfolio.length > 0 },
+                { label: 'Teléfono verificado',     done: !!user?.phone_verified },
+              ];
+              const pct = Math.round((checks.filter(c => c.done).length / checks.length) * 100);
+              if (pct === 100) return null;
+              return (
+                <div className="bg-white rounded-2xl border border-orange-100 p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-bold text-gray-900">Completa tu perfil para recibir más trabajos</p>
+                    <span className="text-lg font-black text-orange-500">{pct}%</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
+                    <div className="bg-orange-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {checks.map(c => (
+                      <div key={c.label} className={`flex items-center gap-2 text-xs ${c.done ? 'text-emerald-600' : 'text-gray-500'}`}>
+                        <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] flex-shrink-0 ${c.done ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                          {c.done ? '✓' : '○'}
+                        </span>
+                        {c.label}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-3">Los perfiles completos reciben hasta 3× más cotizaciones aceptadas.</p>
+                </div>
+              );
+            })()}
+
             {/* Info del perfil */}
             <div className="bg-white rounded-xl shadow-md overflow-hidden">
               <div className="bg-brand-dark px-6 py-4">
