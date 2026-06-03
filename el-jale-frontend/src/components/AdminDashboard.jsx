@@ -123,6 +123,19 @@ function SearchInput({ value, onChange, placeholder }) {
   );
 }
 
+// ── Skeleton Row ───────────────────────────────────────────────────
+function SkeletonRows({ cols = 7, rows = 8 }) {
+  return Array.from({ length: rows }).map((_, i) => (
+    <tr key={i}>
+      {Array.from({ length: cols }).map((_, j) => (
+        <td key={j} className="px-4 py-3.5">
+          <div className={`h-3 bg-gray-100 rounded-full animate-pulse ${j === 1 ? 'w-32' : j === 0 ? 'w-8' : 'w-20'}`} />
+        </td>
+      ))}
+    </tr>
+  ));
+}
+
 // ── Nav Item ───────────────────────────────────────────────────────
 function NavItem({ id, label, icon, active, badge, onClick }) {
   return (
@@ -159,6 +172,13 @@ export default function AdminDashboard() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [notifs, setNotifs]         = useState([]); const [notifsMeta, setNotifsMeta] = useState(null);
   const [notifsLoading, setNotifsLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [kycFilter, setKycFilter] = useState('pending'); // pending | approved | rejected
+  const [configForm, setConfigForm] = useState({ name: '', email: '', password: '', password_confirmation: '' });
+  const [configSaving, setConfigSaving] = useState(false);
+  const [socios, setSocios] = useState([]);
   const [broadcastForm, setBroadcastForm] = useState({ target: 'all', title: '', body: '', user_id: '' });
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [activeTab, setActiveTab]   = useState('stats');
@@ -191,19 +211,29 @@ export default function AdminDashboard() {
     if (activeTab === 'jobs')          fetchJobs();
     if (activeTab === 'payments')      fetchPayments();
     if (activeTab === 'categories')    fetchCategories();
-    if (activeTab === 'kyc')           fetchKycUsers();
+    if (activeTab === 'kyc' || activeTab === 'stats') fetchKycUsers();
     if (activeTab === 'disputes')      fetchDisputes();
     if (activeTab === 'reviews')       fetchReviews();
     if (activeTab === 'notifications') fetchNotifs();
-  }, [activeTab, userSearch, userRole, userPage, jobSearch, jobStatus, jobPage, paymentStatus, paymentPage, reviewFilter, reviewPage, notifPage]);
+  }, [activeTab, userSearch, userRole, userPage, jobSearch, jobStatus, jobPage, paymentStatus, paymentPage, reviewFilter, reviewPage, notifPage, kycFilter]);
 
   const fetchStats      = async () => { try { const r = await api.get('/admin/stats'); setStats(r.data); } catch {} };
-  const fetchUsers      = useCallback(async () => { try { const r = await api.get('/admin/users', { params: { search: userSearch, role: userRole, page: userPage } }); setUsers(r.data.data); setUsersMeta(r.data.meta ?? r.data); } catch {} }, [userSearch, userRole, userPage]);
-  const fetchJobs       = useCallback(async () => { try { const r = await api.get('/admin/jobs', { params: { search: jobSearch, status: jobStatus, page: jobPage } }); setJobs(r.data.data); setJobsMeta(r.data.meta ?? r.data); } catch {} }, [jobSearch, jobStatus, jobPage]);
-  const fetchPayments   = useCallback(async () => { try { const r = await api.get('/admin/payments', { params: { status: paymentStatus, page: paymentPage, date_from: paymentDateFrom || undefined, date_to: paymentDateTo || undefined } }); setPayments(r.data.payments.data); setPaymentsMeta(r.data.payments.meta); setPaymentTotals(r.data.totals); } catch {} }, [paymentStatus, paymentPage, paymentDateFrom, paymentDateTo]);
+  const fetchUsers      = useCallback(async () => { setUsersLoading(true); try { const r = await api.get('/admin/users', { params: { search: userSearch, role: userRole, page: userPage } }); setUsers(r.data.data); setUsersMeta(r.data.meta ?? r.data); } catch {} finally { setUsersLoading(false); } }, [userSearch, userRole, userPage]);
+  const fetchJobs       = useCallback(async () => { setJobsLoading(true); try { const r = await api.get('/admin/jobs', { params: { search: jobSearch, status: jobStatus, page: jobPage } }); setJobs(r.data.data); setJobsMeta(r.data.meta ?? r.data); } catch {} finally { setJobsLoading(false); } }, [jobSearch, jobStatus, jobPage]);
+  const fetchPayments   = useCallback(async () => { setPaymentsLoading(true); try { const r = await api.get('/admin/payments', { params: { status: paymentStatus, page: paymentPage, date_from: paymentDateFrom || undefined, date_to: paymentDateTo || undefined } }); setPayments(r.data.payments.data); setPaymentsMeta(r.data.payments.meta); setPaymentTotals(r.data.totals); } catch {} finally { setPaymentsLoading(false); } }, [paymentStatus, paymentPage, paymentDateFrom, paymentDateTo]);
   const fetchCategories = async () => { try { const r = await api.get('/categories'); setCategories(r.data); } catch {} };
   const fetchDisputes   = async () => { setDisputesLoading(true); try { const r = await api.get('/admin/disputes'); setDisputes(r.data.data ?? r.data); } catch {} finally { setDisputesLoading(false); } };
-  const fetchKycUsers   = async () => { setKycLoading(true); try { const r = await api.get('/admin/users?role=expert&per_page=50'); setKycUsers(r.data.data?.filter(u => u.expert_profile?.verification_status === 'documentos_enviados') ?? []); } catch {} finally { setKycLoading(false); } };
+  const fetchKycUsers   = async () => {
+    setKycLoading(true);
+    try {
+      const r = await api.get('/admin/users', { params: { role: 'expert', per_page: 100 } });
+      const all = r.data.data ?? [];
+      if (kycFilter === 'pending')  setKycUsers(all.filter(u => u.expert_profile?.verification_status === 'documentos_enviados'));
+      else if (kycFilter === 'approved') setKycUsers(all.filter(u => u.expert_profile?.is_verified));
+      else setKycUsers(all.filter(u => u.expert_profile?.verification_status === 'rechazado'));
+      setSocios(all.filter(u => u.expert_profile).slice(0, 50));
+    } catch {} finally { setKycLoading(false); }
+  };
   const fetchReviews    = async () => { setReviewsLoading(true); try { const r = await api.get('/admin/reviews', { params: { min_rating: reviewFilter || undefined, page: reviewPage } }); setReviews(r.data.data); setReviewsMeta(r.data.meta); } catch {} finally { setReviewsLoading(false); } };
   const fetchNotifs     = async () => { setNotifsLoading(true); try { const r = await api.get('/admin/notifications', { params: { page: notifPage } }); setNotifs(r.data.data); setNotifsMeta(r.data.meta); } catch {} finally { setNotifsLoading(false); } };
 
@@ -253,6 +283,18 @@ export default function AdminDashboard() {
   };
   const handleLogout = async () => { try { await api.post('/logout'); } finally { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); } };
 
+  const handleCreateAdmin = async (e) => {
+    e.preventDefault();
+    if (configForm.password !== configForm.password_confirmation) { toast.error('Las contraseñas no coinciden.'); return; }
+    setConfigSaving(true);
+    try {
+      await api.post('/admin/users/create', { ...configForm, role: 'admin' });
+      toast.success('Administrador creado ✅');
+      setConfigForm({ name: '', email: '', password: '', password_confirmation: '' });
+    } catch (e) { toast.error(e.response?.data?.message ?? 'Error al crear usuario'); }
+    finally { setConfigSaving(false); }
+  };
+
   const openPaymentDetail = async (id) => {
     try { const r = await api.get(`/admin/payments/${id}`); setSelectedPayment(r.data); }
     catch { toast.error('Error al cargar el pago.'); }
@@ -294,16 +336,18 @@ export default function AdminDashboard() {
     finally { setBroadcastSending(false); }
   };
 
+  const pendingKyc = kycFilter === 'pending' ? kycUsers.length : 0;
   const TABS = [
     { id: 'stats',         label: 'Resumen',        icon: '📊' },
     { id: 'users',         label: 'Usuarios',       icon: '👥' },
     { id: 'jobs',          label: 'Trabajos',       icon: '🔧' },
     { id: 'payments',      label: 'Pagos',          icon: '💳' },
     { id: 'reviews',       label: 'Reseñas',        icon: '⭐' },
-    { id: 'kyc',           label: 'Verificación',   icon: '🪪', badge: kycUsers.length },
+    { id: 'kyc',           label: 'Verificación',   icon: '🪪', badge: pendingKyc },
     { id: 'disputes',      label: 'Disputas',       icon: '⚠️', badge: disputes.filter(d => !['resuelto','resuelta','cerrada'].includes(d.status)).length },
     { id: 'notifications', label: 'Notificaciones', icon: '🔔' },
     { id: 'categories',    label: 'Oficios',        icon: '🏷️' },
+    { id: 'config',        label: 'Configuración',  icon: '⚙️' },
   ];
 
   return (
@@ -730,6 +774,61 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                   )}
+
+                  {/* Socios Fundadores */}
+                  {socios.length > 0 && (
+                    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">⭐ Socios Fundadores</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Primeros 50 expertos registrados — comisión preferencial</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="text-xl font-black text-orange-500">{Math.min(socios.length, 50)}<span className="text-gray-400 font-medium text-sm">/50</span></p>
+                            <p className="text-[10px] text-gray-400">lugares ocupados</p>
+                          </div>
+                          <div className="w-12 h-12 relative">
+                            <svg viewBox="0 0 36 36" className="w-12 h-12 -rotate-90">
+                              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" strokeWidth="3" />
+                              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f97316" strokeWidth="3"
+                                strokeDasharray={`${(Math.min(socios.length, 50) / 50) * 100} 100`} strokeLinecap="round" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-50">
+                          <thead className="bg-gray-50">
+                            <tr>{['#','Experto','Oficio','Rating','Estado','Desde'].map(h => (
+                              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                            ))}</tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {socios.slice(0, 50).map((u, i) => (
+                              <tr key={u.id} className={`hover:bg-gray-50/50 ${i < 3 ? 'bg-amber-50/30' : ''}`}>
+                                <td className="px-4 py-3">
+                                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-400' : 'bg-gray-200 text-gray-500'}`}>{i+1}</span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <button onClick={() => openUserDetail(u.id)} className="text-sm font-semibold text-blue-600 hover:underline text-left">{u.name}</button>
+                                  <p className="text-xs text-gray-400">{u.email}</p>
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-500">{u.expert_profile?.category?.name ?? '—'}</td>
+                                <td className="px-4 py-3 text-xs font-semibold text-amber-600">{u.expert_profile?.average_rating ?? 0} ⭐</td>
+                                <td className="px-4 py-3">
+                                  {u.expert_profile?.is_verified
+                                    ? <Badge label="✓ Verificado" color="bg-emerald-100 text-emerald-700" />
+                                    : <Badge label="Pendiente" color="bg-amber-100 text-amber-700" />}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-400">{new Date(u.created_at).toLocaleDateString('es-MX')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -763,8 +862,9 @@ export default function AdminDashboard() {
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {users.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Sin resultados</td></tr>}
-                      {users.map(u => (
+                      {usersLoading && <SkeletonRows cols={7} rows={8} />}
+                      {!usersLoading && users.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Sin resultados</td></tr>}
+                      {!usersLoading && users.map(u => (
                         <tr key={u.id} className="hover:bg-gray-50/50 transition-colors group">
                           <td className="px-4 py-3 text-xs text-gray-400">#{u.id}</td>
                           <td className="px-4 py-3">
@@ -827,8 +927,9 @@ export default function AdminDashboard() {
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {jobs.length === 0 && <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400">Sin resultados</td></tr>}
-                      {jobs.map(j => (
+                      {jobsLoading && <SkeletonRows cols={9} rows={8} />}
+                      {!jobsLoading && jobs.length === 0 && <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400">Sin resultados</td></tr>}
+                      {!jobsLoading && jobs.map(j => (
                         <tr key={j.id} className="hover:bg-gray-50/50 transition-colors group">
                           <td className="px-4 py-3 text-xs text-gray-400">#{j.id}</td>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-[180px] truncate">{j.title}</td>
@@ -1066,8 +1167,9 @@ export default function AdminDashboard() {
                       ))}</tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {payments.length === 0 && <tr><td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-400">Sin pagos registrados</td></tr>}
-                      {payments.map(p => (
+                      {paymentsLoading && <SkeletonRows cols={11} rows={8} />}
+                      {!paymentsLoading && payments.length === 0 && <tr><td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-400">Sin pagos registrados</td></tr>}
+                      {!paymentsLoading && payments.map(p => (
                         <tr key={p.id} className="hover:bg-gray-50/50 transition-colors group">
                           <td className="px-4 py-3 text-xs text-gray-400">#{p.id}</td>
                           <td className="px-4 py-3 text-sm text-gray-900 max-w-[140px] truncate">{p.service_job?.title ?? '—'}</td>
@@ -1112,45 +1214,74 @@ export default function AdminDashboard() {
           {/* ── TAB: KYC ── */}
           {activeTab === 'kyc' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-bold text-gray-900">Verificaciones pendientes</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Revisa los documentos de identidad de los expertos</p>
+                  <h2 className="font-bold text-gray-900">Verificación de expertos (KYC)</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Revisa los documentos de identidad</p>
                 </div>
-                <button onClick={fetchKycUsers} className="flex items-center gap-1.5 text-xs text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                  Actualizar
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex bg-gray-100 rounded-xl p-1 gap-1">
+                    {[
+                      { v: 'pending',  label: '⏳ Pendientes' },
+                      { v: 'approved', label: '✅ Aprobados' },
+                      { v: 'rejected', label: '❌ Rechazados' },
+                    ].map(o => (
+                      <button key={o.v} onClick={() => setKycFilter(o.v)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${kycFilter === o.v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={fetchKycUsers} className="flex items-center gap-1.5 text-xs text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Actualizar
+                  </button>
+                </div>
               </div>
               {kycLoading ? (
                 <div className="flex justify-center py-12"><svg className="animate-spin w-8 h-8 text-orange-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
               ) : kycUsers.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
-                  <div className="text-5xl mb-3">🎉</div>
-                  <p className="font-semibold text-gray-700">Todo al día</p>
-                  <p className="text-sm text-gray-400 mt-1">No hay documentos pendientes de revisión.</p>
+                  <div className="text-5xl mb-3">{kycFilter === 'pending' ? '🎉' : kycFilter === 'approved' ? '✅' : '📋'}</div>
+                  <p className="font-semibold text-gray-700">
+                    {kycFilter === 'pending' ? 'Todo al día — sin pendientes' : kycFilter === 'approved' ? 'Sin expertos aprobados aún' : 'Sin rechazos registrados'}
+                  </p>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {kycUsers.map(u => (
-                    <div key={u.id} className="bg-white rounded-2xl border border-amber-200 p-5 hover:shadow-sm transition-shadow">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold shrink-0">{u.name?.[0]?.toUpperCase()}</div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-gray-900 truncate">{u.name}</p>
-                          <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                  {kycUsers.map(u => {
+                    const isApproved = u.expert_profile?.is_verified;
+                    const isRejected = u.expert_profile?.verification_status === 'rechazado';
+                    const borderColor = isApproved ? 'border-emerald-200' : isRejected ? 'border-red-200' : 'border-amber-200';
+                    return (
+                      <div key={u.id} className={`bg-white rounded-2xl border ${borderColor} p-5 hover:shadow-sm transition-shadow`}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold shrink-0">{u.name?.[0]?.toUpperCase()}</div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                            <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                          </div>
+                          {isApproved && <Badge label="✓ Verificado" color="bg-emerald-100 text-emerald-700" />}
+                          {isRejected && <Badge label="Rechazado" color="bg-red-100 text-red-600" />}
                         </div>
+                        <p className="text-xs text-gray-400 mb-3">
+                          {u.expert_profile?.category?.name ?? 'Sin oficio'} · {u.expert_profile?.experience_years ?? 0} años exp.
+                        </p>
+                        {kycFilter === 'pending' && (
+                          <button onClick={() => openKycDocs(u.id)}
+                            className="w-full py-2.5 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-xl transition-colors">
+                            Revisar documentos →
+                          </button>
+                        )}
+                        {kycFilter !== 'pending' && (
+                          <button onClick={() => openUserDetail(u.id)}
+                            className="w-full py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors">
+                            Ver perfil
+                          </button>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 mb-4">
-                        <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-                        <span className="text-xs text-amber-700 font-medium">Documentos enviados · Pendiente revisión</span>
-                      </div>
-                      <button onClick={() => openKycDocs(u.id)}
-                        className="w-full py-2.5 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-xl transition-colors">
-                        Revisar documentos →
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1210,7 +1341,21 @@ export default function AdminDashboard() {
                         </div>
                       )}
                       {d.status !== 'resuelto' && (
-                        <DisputeResolver disputeId={d.id} onResolve={handleResolveDispute} />
+                        <>
+                          {d.service_job?.payment?.status === 'retenido_en_app' && (
+                            <div className="flex gap-2 mb-3">
+                              <button onClick={() => setPaymentAction({ type: 'release', payment: d.service_job.payment })}
+                                className="flex-1 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors">
+                                ✅ Liberar pago al experto
+                              </button>
+                              <button onClick={() => setPaymentAction({ type: 'refund', payment: d.service_job.payment })}
+                                className="flex-1 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors">
+                                ↩️ Reembolsar al cliente
+                              </button>
+                            </div>
+                          )}
+                          <DisputeResolver disputeId={d.id} onResolve={handleResolveDispute} />
+                        </>
                       )}
                     </div>
                   ))}
@@ -1418,6 +1563,114 @@ export default function AdminDashboard() {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB: CONFIGURACIÓN ── */}
+          {activeTab === 'config' && (
+            <div className="space-y-6 max-w-4xl">
+
+              {/* Info plataforma */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                <h3 className="font-bold text-gray-900 mb-4">Información de la plataforma</h3>
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {[
+                    { label: 'Comisión estándar', value: '10%', icon: '💹', desc: 'Por trabajo completado' },
+                    { label: 'Socios Fundadores', value: `${Math.min(socios.length, 50)}/50`, icon: '⭐', desc: 'Lugares ocupados' },
+                    { label: 'Modo urgente', value: '2h', icon: '⚡', desc: 'Tiempo garantizado de respuesta' },
+                    { label: 'Escrow', value: 'Activo', icon: '🔒', desc: 'MercadoPago + SPEI + OXXO' },
+                    { label: 'KYC obligatorio', value: 'Sí', icon: '🪪', desc: 'INE + Selfie para expertos' },
+                    { label: 'Reseñas verificadas', value: 'Sí', icon: '✅', desc: 'Solo clientes que contrataron' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-gray-50 rounded-2xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xl">{s.icon}</span>
+                        <span className="text-xs text-gray-500 font-medium">{s.label}</span>
+                      </div>
+                      <p className="text-2xl font-black text-gray-900">{s.value}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{s.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Crear administrador */}
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                  <h3 className="font-bold text-gray-900 text-sm">👤 Crear nuevo administrador</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">El usuario tendrá acceso completo al panel de administración</p>
+                </div>
+                <form onSubmit={handleCreateAdmin} className="p-6">
+                  <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Nombre completo *</label>
+                      <input type="text" required value={configForm.name}
+                        onChange={e => setConfigForm(p => ({ ...p, name: e.target.value }))}
+                        placeholder="Ej. Carlos Rodríguez"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Email *</label>
+                      <input type="email" required value={configForm.email}
+                        onChange={e => setConfigForm(p => ({ ...p, email: e.target.value }))}
+                        placeholder="admin@eljale.mx"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Contraseña *</label>
+                      <input type="password" required minLength={8} value={configForm.password}
+                        onChange={e => setConfigForm(p => ({ ...p, password: e.target.value }))}
+                        placeholder="Mínimo 8 caracteres"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Confirmar contraseña *</label>
+                      <input type="password" required minLength={8} value={configForm.password_confirmation}
+                        onChange={e => setConfigForm(p => ({ ...p, password_confirmation: e.target.value }))}
+                        placeholder="Repite la contraseña"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 transition-all" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button type="submit" disabled={configSaving}
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors disabled:opacity-60">
+                      {configSaving ? 'Creando...' : '➕ Crear administrador'}
+                    </button>
+                    <p className="text-xs text-gray-400">El nuevo admin podrá iniciar sesión inmediatamente.</p>
+                  </div>
+                </form>
+              </div>
+
+              {/* Acciones rápidas */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                <h3 className="font-bold text-gray-900 mb-4">Exportar datos</h3>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    { type: 'users',    label: 'Exportar usuarios',  icon: '👥' },
+                    { type: 'jobs',     label: 'Exportar trabajos',  icon: '🔧' },
+                    { type: 'payments', label: 'Exportar pagos',     icon: '💳' },
+                  ].map(e => (
+                    <button key={e.type} onClick={() => handleExport(e.type)}
+                      className="flex items-center gap-2 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-200 hover:bg-gray-100 px-4 py-2.5 rounded-xl transition-colors">
+                      <span>{e.icon}</span>
+                      {e.label}
+                      <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sesión actual */}
+              <div className="bg-red-50 border border-red-100 rounded-2xl p-5 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-red-800 text-sm">Cerrar sesión</p>
+                  <p className="text-xs text-red-600 mt-0.5">Conectado como <strong>{user?.name}</strong> ({user?.email})</p>
+                </div>
+                <button onClick={handleLogout}
+                  className="bg-red-500 hover:bg-red-600 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
+                  Cerrar sesión
+                </button>
               </div>
             </div>
           )}
