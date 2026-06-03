@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /servicios/
+Allow: /expertos/
+
+Disallow: /admin
+Disallow: /client-dashboard
+Disallow: /expert-dashboard
+Disallow: /explorar
+
+Sitemap: https://eljale.maewalliscorp.org/sitemap.xml

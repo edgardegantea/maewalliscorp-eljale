@@ -6,6 +6,13 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
+// Canal privado de estado del trabajo (cliente escucha cambios)
+Broadcast::channel('job.{jobId}', function ($user, $jobId) {
+    $job = \App\Models\ServiceJob::find($jobId);
+    if (!$job) return false;
+    return $user->id === $job->client_id || $user->id === $job->expert_id;
+});
+
 // Canal privado del chat por trabajo
 // Solo el cliente o el experto del trabajo pueden suscribirse
 Broadcast::channel('chat.{jobId}', function ($user, $jobId) {

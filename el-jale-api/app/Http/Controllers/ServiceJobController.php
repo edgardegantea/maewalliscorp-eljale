@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Mail\JobAcceptedMail;
 use App\Mail\PaymentReleasedMail;
 use App\Helpers\Notify;
+use App\Events\JobStatusChanged;
 
 class ServiceJobController extends Controller
 {
@@ -135,7 +136,8 @@ class ServiceJobController extends Controller
         }
 
         $job->update(['expert_id' => $user->id, 'status' => 'asignado']);
-        $job->load('client');
+        $job->load(['client', 'expert']);
+        broadcast(new JobStatusChanged($job));
 
         // Notificación en app al cliente
         Notify::send(
@@ -175,6 +177,7 @@ class ServiceJobController extends Controller
         }
 
         $job->update(['status' => 'cancelado']);
+        broadcast(new JobStatusChanged($job->fresh()));
 
         // Notificar a la otra parte
         $otherUserId = $user->id === $job->client_id ? $job->expert_id : $job->client_id;
@@ -313,8 +316,8 @@ class ServiceJobController extends Controller
 
         $job->payment->update(['status' => 'liberado_al_experto']);
         $job->update(['status' => 'completado']);
-
-        $job->load('expert');
+        $job->load(['expert', 'client']);
+        broadcast(new JobStatusChanged($job));
 
         // Notificar al experto
         Notify::send(
