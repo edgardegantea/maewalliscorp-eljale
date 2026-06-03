@@ -1,7 +1,7 @@
 // src/components/ChatModal.jsx — Chat en tiempo real con Laravel Reverb
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
-import echo from '../echo';
+import { getEcho } from '../echo';
 
 export default function ChatModal({ job, currentUserId, onClose }) {
   const [messages, setMessages]   = useState([]);
@@ -17,8 +17,8 @@ export default function ChatModal({ job, currentUserId, onClose }) {
     inputRef.current?.focus();
     document.body.style.overflow = 'hidden';
 
-    // Suscribirse al canal privado del chat
-    const channel = echo.private(`chat.${job.id}`)
+    // Suscribirse al canal privado del chat (lazy connect)
+    const channel = getEcho().private(`chat.${job.id}`)
       .listen('.message.sent', (data) => {
         setMessages(prev => {
           // Evitar duplicados (el remitente ya agregó el mensaje optimistamente)
@@ -30,7 +30,7 @@ export default function ChatModal({ job, currentUserId, onClose }) {
       .error(() => setConnected(false));
 
     return () => {
-      echo.leave(`chat.${job.id}`);
+      getEcho().leave(`chat.${job.id}`);
       document.body.style.overflow = '';
     };
   }, [job.id]);

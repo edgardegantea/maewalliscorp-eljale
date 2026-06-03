@@ -117,7 +117,14 @@ class ExpertProfileController extends Controller
         $profile = \App\Models\ExpertProfile::where('user_id', $user->id)->first();
 
         if (!$profile) {
-            return response()->json(['message' => 'Perfil de experto no encontrado. Completa tu registro.'], 422);
+            // Auto-crear perfil con categoría por defecto
+            $defaultCategory = \App\Models\Category::first();
+            $profile = \App\Models\ExpertProfile::create([
+                'user_id'     => $user->id,
+                'category_id' => $defaultCategory?->id ?? 1,
+                'is_verified' => false,
+                'is_available'=> true,
+            ]);
         }
 
         $profile->update($request->only('bio', 'hourly_rate', 'city', 'state', 'latitude', 'longitude', 'coverage_radius_km'));
