@@ -71,19 +71,23 @@ class ServiceJobController extends Controller
         }
 
         $request->validate([
-            'category_id'    => 'required|exists:categories,id',
-            'title'          => 'required|string|max:255',
-            'description'    => 'required|string',
-            'budget'         => 'nullable|numeric|min:0',
-            'address'        => 'nullable|string|max:500',
-            'preferred_date' => 'nullable|date|after_or_equal:today',
-            'preferred_time' => 'nullable|date_format:H:i',
-            'urgency'        => 'nullable|in:normal,urgente',
-            'latitude'       => 'nullable|numeric|between:-90,90',
-            'longitude'      => 'nullable|numeric|between:-180,180',
-            'city'           => 'nullable|string|max:100',
-            'photos'         => 'nullable|array|max:5',
-            'photos.*'       => 'image|max:5120',
+            'category_id'       => 'required|exists:categories,id',
+            'title'             => 'required|string|max:255',
+            'description'       => 'required|string',
+            'budget'            => 'nullable|numeric|min:0',
+            'address'           => 'nullable|string|max:500',
+            'preferred_date'    => 'nullable|date|after_or_equal:today',
+            'preferred_time'    => 'nullable|date_format:H:i',
+            'urgency'           => 'nullable|in:normal,urgente',
+            'is_urgent'         => 'nullable|boolean',
+            'payment_method'    => 'nullable|in:mercadopago,efectivo,transferencia,oxxo',
+            'latitude'          => 'nullable|numeric|between:-90,90',
+            'longitude'         => 'nullable|numeric|between:-180,180',
+            'city'              => 'nullable|string|max:100',
+            'photos'            => 'nullable|array|max:5',
+            'photos.*'          => 'image|max:5120',
+            'repeat_from_job_id'=> 'nullable|exists:service_jobs,id',
+            'hire_expert_id'    => 'nullable|exists:users,id',
         ]);
 
         $photoPaths = [];
@@ -93,32 +97,86 @@ class ServiceJobController extends Controller
             }
         }
 
+        // Modo urgente: +50% al presupuesto
+        $isUrgent   = $request->boolean('is_urgent') || $request->urgency === 'urgente';
+        $multiplier = $isUrgent ? 1.50 : 1.00;
+        $budget     = $request->budget ? round($request->budget * $multiplier, 2) : null;
+
         $job = ServiceJob::create([
-            'client_id'      => $user->id,
-            'category_id'    => $request->category_id,
-            'title'          => $request->title,
-            'description'    => $request->description,
-            'budget'         => $request->budget,
-            'address'        => $request->address,
-            'preferred_date' => $request->preferred_date,
-            'preferred_time' => $request->preferred_time,
-            'urgency'        => $request->urgency ?? 'normal',
-            'latitude'       => $request->latitude,
-            'longitude'      => $request->longitude,
-            'city'           => $request->city,
-            'client_photos'  => $photoPaths ?: null,
-            'status'         => 'buscando',
+            'client_id'             => $user->id,
+            'category_id'           => $request->category_id,
+            'title'                 => $request->title,
+            'description'           => $request->description,
+            'budget'                => $budget,
+            'address'               => $request->address,
+            'preferred_date'        => $request->preferred_date,
+            'preferred_time'        => $request->preferred_time,
+            'urgency'               => $isUrgent ? 'urgente' : ($request->urgency ?? 'normal'),
+            'is_urgent'             => $isUrgent,
+            'urgent_fee_multiplier' => $multiplier,
+            'latitude'              => $request->latitude,
+            'longitude'             => $request->longitude,
+            'city'                  => $request->city,
+            'client_photos'         => $photoPaths ?: null,
+            'status'                => 'buscando',
+            'repeat_from_job_id'    => $request->repeat_from_job_id,
         ]);
 
-        if ($request->budget > 0) {
+        $paymentMethod = $request->payment_method ?? 'mercadopago';
+
+        if ($budget > 0) {
+            $feePercent  = (float) config('mercadopago.platform_fee_percent', 10) / 100;
+            $platformFee = round($budget * $feePercent, 2);
+            $expertAmt   = round($budget - $platformFee, 2);
+
             Payment::create([
                 'service_job_id' => $job->id,
-                'amount'         => $request->budget,
-                'status'         => 'retenido_en_app',
+                'amount'         => $budget,
+                'status'         => $paymentMethod === 'efectivo' ? 'pendiente' : 'retenido_en_app',
+                'payment_method' => $paymentMethod,
+                'platform_fee'   => $platformFee,
+                'expert_amount'  => $expertAmt,
             ]);
         }
 
+        // Si se seleccionó un experto directo (contratar de nuevo / desde mapa)
+        if ($request->hire_expert_id && $budget > 0) {
+            Notify::send(
+                $request->hire_expert_id,
+                'direct_hire',
+                '⚡ Te contrataron directamente',
+                "{$user->name} quiere contratarte para: {$job->title}",
+                $job->id, 'ServiceJob'
+            );
+        }
+
         return response()->json($job->load('payment'), 201);
+    }
+
+    // Confirmar pago en efectivo (cliente confirma que pagó)
+    public function confirmCashPayment(Request $request, $id)
+    {
+        $user = Auth::user();
+        $job  = ServiceJob::with('payment')->findOrFail($id);
+
+        if ($user->id !== $job->client_id) {
+            return response()->json(['message' => 'Acceso denegado'], 403);
+        }
+
+        if (!$job->payment || $job->payment->payment_method !== 'efectivo') {
+            return response()->json(['message' => 'Este trabajo no tiene pago en efectivo'], 422);
+        }
+
+        $job->payment->update([
+            'status'           => 'liberado_al_experto',
+            'cash_confirmed_at'=> now(),
+        ]);
+        $job->update(['status' => 'completado']);
+
+        Notify::send($job->expert_id, 'cash_payment_confirmed', '💵 Pago en efectivo confirmado',
+            "El cliente confirmó el pago de \"{$job->title}\".", $job->id, 'ServiceJob');
+
+        return response()->json(['message' => 'Pago confirmado.']);
     }
 
     public function acceptJob(Request $request, $id)

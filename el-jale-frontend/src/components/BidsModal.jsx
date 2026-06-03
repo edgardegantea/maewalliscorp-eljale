@@ -4,10 +4,14 @@ import api from '../api/axios';
 import StarRating from './StarRating';
 import toast from 'react-hot-toast';
 
+const fmt = (n) => n ? `$${Number(n).toLocaleString('es-MX')}` : 'A convenir';
+
 export default function BidsModal({ job, onClose, onAccepted }) {
-  const [bids, setBids] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [bids, setBids]         = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [accepting, setAccepting] = useState(null);
+  const [viewMode, setViewMode] = useState('list'); // list | compare
+  const [compared, setCompared] = useState([]);     // hasta 3 bids para comparar
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -46,6 +50,18 @@ export default function BidsModal({ job, onClose, onAccepted }) {
             <p className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{job.title}</p>
           </div>
           <div className="flex items-center gap-3">
+            {bids.length > 1 && (
+              <div className="flex bg-gray-100 rounded-xl p-0.5 gap-0.5">
+                <button onClick={() => setViewMode('list')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                  Lista
+                </button>
+                <button onClick={() => { setViewMode('compare'); setCompared(bids.slice(0,3).map(b=>b.id)); }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${viewMode === 'compare' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                  Comparar
+                </button>
+              </div>
+            )}
             {bids.length > 0 && (
               <span className="px-2.5 py-1 bg-brand-primary text-white text-xs font-bold rounded-full">
                 {bids.length} {bids.length === 1 ? 'oferta' : 'ofertas'}
@@ -57,7 +73,54 @@ export default function BidsModal({ job, onClose, onAccepted }) {
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+        {/* ── Vista Comparador ── */}
+        {viewMode === 'compare' && bids.length > 1 && (
+          <div className="overflow-x-auto flex-1 p-4">
+            <table className="w-full text-sm border-separate border-spacing-x-2">
+              <thead>
+                <tr>
+                  <td className="text-xs text-gray-400 font-semibold uppercase py-2 w-28">Criterio</td>
+                  {bids.filter(b => compared.includes(b.id)).slice(0,3).map(bid => (
+                    <th key={bid.id} className="bg-gray-50 rounded-xl px-4 py-3 text-center min-w-[160px]">
+                      <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-sm mx-auto mb-1">
+                        {bid.expert.name?.[0]}
+                      </div>
+                      <p className="font-bold text-gray-900 text-sm truncate">{bid.expert.name}</p>
+                      {bid.expert.is_verified && <span className="text-[10px] text-emerald-600 font-bold">✓ Verificado</span>}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="space-y-1">
+                {[
+                  { label: 'Precio',        render: b => <span className="text-lg font-black text-orange-600">{fmt(b.amount)}</span> },
+                  { label: 'Rating',        render: b => b.expert.avg_rating > 0 ? <div className="flex items-center justify-center gap-1"><StarRating value={Math.round(b.expert.avg_rating)} readonly size="sm" /><span className="text-xs">({b.expert.total_reviews})</span></div> : <span className="text-gray-400 text-xs">Sin reseñas</span> },
+                  { label: 'Experiencia',   render: b => <span>{b.expert.experience_years} años</span> },
+                  { label: 'Mensaje',       render: b => <p className="text-xs text-gray-600 text-left leading-relaxed italic">"{b.message}"</p> },
+                  { label: 'Tarifa/hora',   render: b => b.expert.hourly_rate ? <span>${b.expert.hourly_rate}/hr</span> : <span className="text-gray-400">—</span> },
+                  { label: 'Acción',        render: b => (
+                    <button onClick={() => handleAccept(b.id)} disabled={accepting === b.id}
+                      className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors disabled:opacity-60 w-full">
+                      {accepting === b.id ? '...' : 'Contratar'}
+                    </button>
+                  )},
+                ].map(row => (
+                  <tr key={row.label}>
+                    <td className="text-xs text-gray-400 font-medium py-3 pr-2">{row.label}</td>
+                    {bids.filter(b => compared.includes(b.id)).slice(0,3).map(bid => (
+                      <td key={bid.id} className="bg-gray-50 rounded-xl px-4 py-3 text-center align-middle">
+                        {row.render(bid)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ── Vista Lista ── */}
+        {viewMode === 'list' && <div className="overflow-y-auto flex-1 p-4 space-y-3">
           {loading && (
             <div className="space-y-3">
               {[...Array(2)].map((_, i) => <div key={i} className="h-32 bg-gray-100 rounded-2xl animate-pulse" />)}
@@ -131,6 +194,8 @@ export default function BidsModal({ job, onClose, onAccepted }) {
             </div>
           ))}
         </div>
+        }
+
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ use App\Http\Controllers\IdentityVerificationController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PhoneVerificationController;
+use App\Http\Controllers\PriceEstimatorController;
 
 /*
 |--------------------------------------------------------------------------
@@ -61,6 +62,9 @@ Route::get('/experts/{userId}', [ExpertProfileController::class, 'show']);
 
 // Mapa de expertos (requiere coords)
 Route::get('/experts-map', [ExpertProfileController::class, 'mapExperts']);
+
+// Estimador de precios (público)
+Route::get('/price-estimate', [PriceEstimatorController::class, 'estimate']);
 
 
 // ==========================================
@@ -109,6 +113,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Cancelar trabajo (cliente o experto asignado)
     Route::post('/jobs/{id}/cancel', [ServiceJobController::class, 'cancelJob']);
+
+    // Confirmar pago en efectivo
+    Route::post('/jobs/{id}/confirm-cash', [ServiceJobController::class, 'confirmCashPayment']);
 
     // Perfil del experto
     Route::put('/expert-profile', [ExpertProfileController::class, 'update']);

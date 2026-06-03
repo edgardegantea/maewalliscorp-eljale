@@ -19,6 +19,8 @@ class Payment extends Model
         'mp_status',
         'platform_fee',
         'expert_amount',
+        'payment_method',
+        'cash_confirmed_at',
     ];
 
     public function serviceJob()

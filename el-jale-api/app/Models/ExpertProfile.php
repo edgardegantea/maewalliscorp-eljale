@@ -25,6 +25,8 @@ class ExpertProfile extends Model
         'onboarding_completed', 'onboarding_step',
         // Premium
         'is_premium', 'premium_expires_at', 'mp_subscription_preference_id',
+        // Garantía
+        'has_guarantee',
     ];
 
     public function user()     { return $this->belongsTo(User::class); }

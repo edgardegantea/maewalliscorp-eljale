@@ -14,6 +14,7 @@ import ClientStatsWidget from './ClientStatsWidget';
 import NotificationCenter from './NotificationCenter';
 import PaymentModal from './PaymentModal';
 import PhoneVerification from './PhoneVerification';
+import PriceEstimator from './PriceEstimator';
 import { lazy, Suspense, useState as useMapState } from 'react';
 const MapaExpertos = lazy(() => import('./MapaExpertos'));
 import ReferralWidget from './ReferralWidget';
@@ -29,7 +30,7 @@ export default function ClientDashboard() {
   const [showMap, setShowMap] = useMapState(false);
   const [categories, setCategories] = useState([]);
   const [myJobs, setMyJobs] = useState([]);
-  const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal' });
+  const [newJob, setNewJob] = useState({ category_id: '', title: '', description: '', budget: '', address: '', preferred_date: '', preferred_time: '', urgency: 'normal', is_urgent: false, payment_method: 'mercadopago' });
   const [photos, setPhotos] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -368,15 +369,17 @@ export default function ClientDashboard() {
                     <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Nivel de urgencia</label>
                     <div className="flex gap-3">
                       {[
-                        { value: 'normal',  label: '📅 Normal',  desc: 'Puedo esperar' },
-                        { value: 'urgente', label: '🚨 Urgente', desc: 'Lo necesito pronto' },
+                        { value: false, label: '📅 Normal',       desc: 'Puedo esperar 1-3 días' },
+                        { value: true,  label: '⚡ Urgente (+50%)', desc: 'Necesito respuesta en 2h · Precio mayor' },
                       ].map(opt => (
-                        <label key={opt.value} className={`flex-1 flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                          newJob.urgency === opt.value
-                            ? opt.value === 'urgente' ? 'border-red-400 bg-red-50' : 'border-brand-primary bg-orange-50'
+                        <label key={String(opt.value)} className={`flex-1 flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                          newJob.is_urgent === opt.value
+                            ? opt.value ? 'border-red-400 bg-red-50' : 'border-brand-primary bg-orange-50'
                             : 'border-gray-200 hover:border-gray-300'
                         }`}>
-                          <input type="radio" name="urgency" value={opt.value} checked={newJob.urgency === opt.value} onChange={handleChange} className="sr-only" />
+                          <input type="radio" name="is_urgent" checked={newJob.is_urgent === opt.value}
+                            onChange={() => setNewJob(p => ({ ...p, is_urgent: opt.value, urgency: opt.value ? 'urgente' : 'normal' }))}
+                            className="sr-only" />
                           <div>
                             <p className="text-sm font-semibold text-gray-900">{opt.label}</p>
                             <p className="text-xs text-gray-500">{opt.desc}</p>
@@ -384,8 +387,42 @@ export default function ClientDashboard() {
                         </label>
                       ))}
                     </div>
+                    {newJob.is_urgent && (
+                      <p className="text-xs text-red-600 mt-1.5 font-medium">⚡ Modo urgente: el presupuesto se ajustará +50% para atraer expertos disponibles ahora mismo.</p>
+                    )}
+                  </div>
+
+                  {/* Método de pago */}
+                  <div className="col-span-1 md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Método de pago</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { value: 'mercadopago',  label: '💳 MercadoPago', desc: 'Tarjeta / en línea' },
+                        { value: 'efectivo',     label: '💵 Efectivo',    desc: 'Pago al terminar' },
+                        { value: 'transferencia',label: '🏦 Transferencia',desc: 'SPEI / banco' },
+                        { value: 'oxxo',         label: '🏪 OXXO',        desc: 'Pago en tienda' },
+                      ].map(opt => (
+                        <label key={opt.value} className={`flex flex-col p-2.5 rounded-xl border-2 cursor-pointer transition-all ${
+                          newJob.payment_method === opt.value ? 'border-brand-primary bg-orange-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}>
+                          <input type="radio" name="payment_method" value={opt.value}
+                            checked={newJob.payment_method === opt.value}
+                            onChange={handleChange} className="sr-only" />
+                          <span className="text-xs font-bold text-gray-900">{opt.label}</span>
+                          <span className="text-[10px] text-gray-500">{opt.desc}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
+                {/* Estimador de precio */}
+                <PriceEstimator
+                  categoryId={newJob.category_id}
+                  city={newJob.city || undefined}
+                  isUrgent={newJob.is_urgent}
+                  onSuggest={(price) => setNewJob(p => ({ ...p, budget: String(price) }))}
+                />
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Fotos del problema (Opcional, máx. 5)</label>
@@ -713,6 +750,22 @@ export default function ClientDashboard() {
                             </span>
                           )}
 
+                          {/* Confirmar pago en efectivo */}
+                          {job.status === 'asignado' && job.payment?.payment_method === 'efectivo' && (
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm(`¿Confirmas que pagaste en efectivo a ${job.expert?.name}?`)) return;
+                                try {
+                                  await api.post(`/jobs/${job.id}/confirm-cash`);
+                                  toast.success('Pago confirmado. ¡Gracias!');
+                                  fetchMyJobs();
+                                } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all">
+                              💵 Confirmar pago en efectivo
+                            </button>
+                          )}
+
                           {/* Volver a contratar */}
                           {job.status === 'completado' && job.expert && (
                             <button
@@ -723,12 +776,14 @@ export default function ClientDashboard() {
                                   title: job.title,
                                   description: job.description,
                                   address: job.address ?? '',
+                                  is_urgent: false,
+                                  payment_method: 'mercadopago',
                                 }));
-                                setHireNote(`Volver a contratar a ${job.expert.name}`);
                                 document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth' });
+                                toast.success(`📋 Formulario prellenado con los datos del trabajo anterior. ¡${job.expert.name} será notificado!`);
                               }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl text-brand-primary bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all">
-                              🔁 Volver a contratar
+                              🔁 Contratar a {job.expert.name} de nuevo
                             </button>
                           )}
 
@@ -749,6 +804,19 @@ export default function ClientDashboard() {
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
                               📄 Descargar recibo
                             </button>
+                          )}
+
+                          {/* Compartir por WhatsApp */}
+                          {job.status === 'completado' && (
+                            <a
+                              href={`https://wa.me/?text=${encodeURIComponent(
+                                `✅ Trabajo completado en El Jale\n\n📋 ${job.title}\n👷 Experto: ${job.expert?.name ?? '—'}\n💰 Monto: $${job.payment?.amount ? Number(job.payment.amount).toLocaleString('es-MX') : '—'}\n\n¡Contrata expertos verificados en eljale.maewalliscorp.org!`
+                              )}`}
+                              target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-all">
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                              WhatsApp
+                            </a>
                           )}
 
                           {job.status === 'asignado' && !job.dispute && (

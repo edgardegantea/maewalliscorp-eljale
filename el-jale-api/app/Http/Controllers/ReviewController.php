@@ -35,7 +35,17 @@ class ReviewController extends Controller
         $request->validate([
             'rating'  => 'required|integer|min:1|max:5',
             'comment' => 'nullable|string|max:500',
+            'photos'  => 'nullable|array|max:4',
+            'photos.*'=> 'image|max:8192',
         ]);
+
+        // Subir fotos de la reseña
+        $photoPaths = [];
+        if ($request->hasFile('photos')) {
+            foreach ($request->file('photos') as $photo) {
+                $photoPaths[] = $photo->store("reviews/{$jobId}", 'public');
+            }
+        }
 
         $review = \App\Models\Review::create([
             'service_job_id' => $job->id,
@@ -43,6 +53,7 @@ class ReviewController extends Controller
             'expert_id'      => $job->expert_id,
             'rating'         => $request->rating,
             'comment'        => $request->comment,
+            'photos'         => $photoPaths ?: null,
         ]);
 
         $review->load('client:id,name');
