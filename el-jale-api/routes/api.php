@@ -200,6 +200,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/experts/{userId}/verify',  [AdminController::class, 'verifyExpert']);
         Route::post('/experts/{userId}/reject',  [AdminController::class, 'rejectExpert']);
 
+        // Reseñas
+        Route::get('/reviews',                   [AdminController::class, 'reviews']);
+        Route::delete('/reviews/{id}',           [AdminController::class, 'deleteReview']);
+
+        // Notificaciones
+        Route::get('/notifications',             [AdminController::class, 'notifications']);
+        Route::post('/notifications/send',       [AdminController::class, 'sendNotification']);
+
+        // Exportar pagos
+        Route::get('/export/payments',           [AdminController::class, 'exportPayments']);
+
         // KYC admin — dentro del grupo /admin
         Route::get('/kyc/{userId}',                  [IdentityVerificationController::class, 'getDocuments']);
         Route::get('/kyc/{userId}/document/{field}', [IdentityVerificationController::class, 'getDocument']);

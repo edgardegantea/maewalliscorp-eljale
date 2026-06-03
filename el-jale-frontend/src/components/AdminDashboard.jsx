@@ -155,6 +155,12 @@ export default function AdminDashboard() {
   const [kycRejectReason, setKycRejectReason] = useState('');
   const [disputes, setDisputes]     = useState([]);
   const [disputesLoading, setDisputesLoading] = useState(false);
+  const [reviews, setReviews]       = useState([]); const [reviewsMeta, setReviewsMeta] = useState(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [notifs, setNotifs]         = useState([]); const [notifsMeta, setNotifsMeta] = useState(null);
+  const [notifsLoading, setNotifsLoading] = useState(false);
+  const [broadcastForm, setBroadcastForm] = useState({ target: 'all', title: '', body: '', user_id: '' });
+  const [broadcastSending, setBroadcastSending] = useState(false);
   const [activeTab, setActiveTab]   = useState('stats');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -162,6 +168,8 @@ export default function AdminDashboard() {
   const [userSearch, setUserSearch] = useState(''); const [userRole, setUserRole] = useState(''); const [userPage, setUserPage] = useState(1);
   const [jobSearch, setJobSearch]   = useState(''); const [jobStatus, setJobStatus] = useState(''); const [jobPage, setJobPage] = useState(1);
   const [paymentStatus, setPaymentStatus] = useState(''); const [paymentPage, setPaymentPage] = useState(1);
+  const [reviewFilter, setReviewFilter] = useState(''); const [reviewPage, setReviewPage] = useState(1);
+  const [notifPage, setNotifPage]   = useState(1);
 
   // Modales
   const [selectedUser, setSelectedUser] = useState(null);
@@ -173,13 +181,15 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchStats(); }, []);
   useEffect(() => {
-    if (activeTab === 'users')      fetchUsers();
-    if (activeTab === 'jobs')       fetchJobs();
-    if (activeTab === 'payments')   fetchPayments();
-    if (activeTab === 'categories') fetchCategories();
-    if (activeTab === 'kyc')        fetchKycUsers();
-    if (activeTab === 'disputes')   fetchDisputes();
-  }, [activeTab, userSearch, userRole, userPage, jobSearch, jobStatus, jobPage, paymentStatus, paymentPage]);
+    if (activeTab === 'users')         fetchUsers();
+    if (activeTab === 'jobs')          fetchJobs();
+    if (activeTab === 'payments')      fetchPayments();
+    if (activeTab === 'categories')    fetchCategories();
+    if (activeTab === 'kyc')           fetchKycUsers();
+    if (activeTab === 'disputes')      fetchDisputes();
+    if (activeTab === 'reviews')       fetchReviews();
+    if (activeTab === 'notifications') fetchNotifs();
+  }, [activeTab, userSearch, userRole, userPage, jobSearch, jobStatus, jobPage, paymentStatus, paymentPage, reviewFilter, reviewPage, notifPage]);
 
   const fetchStats      = async () => { try { const r = await api.get('/admin/stats'); setStats(r.data); } catch {} };
   const fetchUsers      = useCallback(async () => { try { const r = await api.get('/admin/users', { params: { search: userSearch, role: userRole, page: userPage } }); setUsers(r.data.data); setUsersMeta(r.data.meta ?? r.data); } catch {} }, [userSearch, userRole, userPage]);
@@ -188,6 +198,8 @@ export default function AdminDashboard() {
   const fetchCategories = async () => { try { const r = await api.get('/categories'); setCategories(r.data); } catch {} };
   const fetchDisputes   = async () => { setDisputesLoading(true); try { const r = await api.get('/admin/disputes'); setDisputes(r.data.data ?? r.data); } catch {} finally { setDisputesLoading(false); } };
   const fetchKycUsers   = async () => { setKycLoading(true); try { const r = await api.get('/admin/users?role=expert&per_page=50'); setKycUsers(r.data.data?.filter(u => u.expert_profile?.verification_status === 'documentos_enviados') ?? []); } catch {} finally { setKycLoading(false); } };
+  const fetchReviews    = async () => { setReviewsLoading(true); try { const r = await api.get('/admin/reviews', { params: { min_rating: reviewFilter || undefined, page: reviewPage } }); setReviews(r.data.data); setReviewsMeta(r.data.meta); } catch {} finally { setReviewsLoading(false); } };
+  const fetchNotifs     = async () => { setNotifsLoading(true); try { const r = await api.get('/admin/notifications', { params: { page: notifPage } }); setNotifs(r.data.data); setNotifsMeta(r.data.meta); } catch {} finally { setNotifsLoading(false); } };
 
   const openKycDocs = async (userId) => {
     setKycUserId(userId);
@@ -235,14 +247,35 @@ export default function AdminDashboard() {
   };
   const handleLogout = async () => { try { await api.post('/logout'); } finally { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); } };
 
+  const handleDeleteReview = async (id) => {
+    if (!window.confirm('¿Eliminar esta reseña?')) return;
+    try { await api.delete(`/admin/reviews/${id}`); toast.success('Reseña eliminada.'); fetchReviews(); }
+    catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+  };
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault();
+    if (!broadcastForm.title.trim() || !broadcastForm.body.trim()) return;
+    setBroadcastSending(true);
+    try {
+      const r = await api.post('/admin/notifications/send', broadcastForm);
+      toast.success(r.data.message);
+      setBroadcastForm({ target: 'all', title: '', body: '', user_id: '' });
+      fetchNotifs();
+    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+    finally { setBroadcastSending(false); }
+  };
+
   const TABS = [
-    { id: 'stats',      label: 'Resumen',     icon: '📊' },
-    { id: 'users',      label: 'Usuarios',    icon: '👥' },
-    { id: 'jobs',       label: 'Trabajos',    icon: '🔧' },
-    { id: 'payments',   label: 'Pagos',       icon: '💳' },
-    { id: 'kyc',        label: 'Verificación',icon: '🪪', badge: kycUsers.length },
-    { id: 'disputes',   label: 'Disputas',    icon: '⚠️', badge: disputes.filter(d => d.status !== 'resuelto').length },
-    { id: 'categories', label: 'Oficios',     icon: '🏷️' },
+    { id: 'stats',         label: 'Resumen',        icon: '📊' },
+    { id: 'users',         label: 'Usuarios',       icon: '👥' },
+    { id: 'jobs',          label: 'Trabajos',       icon: '🔧' },
+    { id: 'payments',      label: 'Pagos',          icon: '💳' },
+    { id: 'reviews',       label: 'Reseñas',        icon: '⭐' },
+    { id: 'kyc',           label: 'Verificación',   icon: '🪪', badge: kycUsers.length },
+    { id: 'disputes',      label: 'Disputas',       icon: '⚠️', badge: disputes.filter(d => !['resuelto','resuelta','cerrada'].includes(d.status)).length },
+    { id: 'notifications', label: 'Notificaciones', icon: '🔔' },
+    { id: 'categories',    label: 'Oficios',        icon: '🏷️' },
   ];
 
   return (
@@ -336,11 +369,12 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {[
                     { label: 'Trabajos', value: selectedUser.job_count },
                     { label: 'Completados', value: selectedUser.completed_jobs },
-                    { label: selectedUser.user.role === 'expert' ? 'Ganado' : 'Gastado', value: fmt(selectedUser.total_earned ?? 0) },
+                    { label: 'Ganado', value: fmt(selectedUser.total_earned ?? 0) },
+                    { label: 'Referidos', value: selectedUser.referrals_count ?? 0 },
                   ].map(s => (
                     <div key={s.label} className="bg-gray-50 rounded-xl p-3 text-center">
                       <p className="font-black text-xl text-gray-900">{s.value}</p>
@@ -484,67 +518,154 @@ export default function AdminDashboard() {
             <div className="space-y-6">
               {!stats ? (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[...Array(8)].map((_, i) => <div key={i} className="h-28 bg-white rounded-2xl animate-pulse border border-gray-100" />)}
+                  {[...Array(12)].map((_, i) => <div key={i} className="h-28 bg-white rounded-2xl animate-pulse border border-gray-100" />)}
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <StatCard label="Usuarios totales" value={stats.total_users} icon="👤" color="bg-blue-100 text-blue-600" />
-                    <StatCard label="Expertos" value={stats.total_experts} icon="🔧" color="bg-orange-100 text-orange-600" sub={stats.experts_pending > 0 ? `${stats.experts_pending} sin verificar` : 'Todos verificados'} />
-                    <StatCard label="Clientes" value={stats.total_clients} icon="🏠" color="bg-purple-100 text-purple-600" />
-                    <StatCard label="Jales totales" value={stats.total_jobs} icon="📋" color="bg-slate-100 text-slate-600" />
+                  {/* Hoy / Esta semana */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-5 text-white">
+                      <p className="text-orange-200 text-xs font-medium mb-1">Hoy</p>
+                      <div className="flex items-end gap-4">
+                        <div><p className="text-2xl font-black">{stats.today_jobs}</p><p className="text-orange-200 text-xs">jales</p></div>
+                        <div><p className="text-2xl font-black">{stats.today_users}</p><p className="text-orange-200 text-xs">usuarios</p></div>
+                        <div><p className="text-lg font-black">{fmt(stats.today_revenue)}</p><p className="text-orange-200 text-xs">revenue</p></div>
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
+                      <p className="text-blue-200 text-xs font-medium mb-1">Esta semana</p>
+                      <div className="flex items-end gap-4">
+                        <div><p className="text-2xl font-black">{stats.week_jobs}</p><p className="text-blue-200 text-xs">jales</p></div>
+                        <div><p className="text-2xl font-black">{stats.week_users}</p><p className="text-blue-200 text-xs">usuarios</p></div>
+                        <div><p className="text-lg font-black">{fmt(stats.week_revenue)}</p><p className="text-blue-200 text-xs">revenue</p></div>
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 text-white">
+                      <p className="text-emerald-200 text-xs font-medium mb-1">Métricas clave</p>
+                      <div className="flex items-end gap-4">
+                        <div><p className="text-2xl font-black">{stats.conversion_rate}%</p><p className="text-emerald-200 text-xs">conversión</p></div>
+                        <div><p className="text-2xl font-black">{stats.cancellation_rate}%</p><p className="text-emerald-200 text-xs">cancelación</p></div>
+                        <div><p className="text-lg font-black">{stats.avg_completion_hours ? `${stats.avg_completion_hours}h` : '—'}</p><p className="text-emerald-200 text-xs">prom. cierre</p></div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <StatCard label="Buscando experto" value={stats.jobs_buscando} icon="🔍" color="bg-amber-100 text-amber-600" />
-                    <StatCard label="En progreso" value={stats.jobs_asignado} icon="⚙️" color="bg-blue-100 text-blue-600" />
+                  {/* KPIs principales */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                    <StatCard label="Usuarios" value={stats.total_users} icon="👤" color="bg-blue-100 text-blue-600" />
+                    <StatCard label="Clientes" value={stats.total_clients} icon="🏠" color="bg-purple-100 text-purple-600" />
+                    <StatCard label="Expertos" value={stats.total_experts} icon="🔧" color="bg-orange-100 text-orange-600" sub={`${stats.experts_verified ?? 0} verificados`} />
+                    <StatCard label="Premium" value={stats.experts_premium} icon="⭐" color="bg-yellow-100 text-yellow-600" />
+                    <StatCard label="Jales" value={stats.total_jobs} icon="📋" color="bg-slate-100 text-slate-600" />
                     <StatCard label="Completados" value={stats.jobs_completado} icon="✅" color="bg-emerald-100 text-emerald-600" />
-                    <StatCard label="Calificación prom." value={stats.avg_rating ? `${stats.avg_rating} ⭐` : '—'} icon="⭐" color="bg-yellow-100 text-yellow-600" sub={`${stats.total_reviews ?? 0} reseñas`} />
+                    <StatCard label="Reseñas" value={stats.total_reviews} icon="💬" color="bg-pink-100 text-pink-600" sub={`${stats.avg_rating} ⭐`} />
+                    <StatCard label="Disputas" value={stats.open_disputes} icon="⚠️" color={stats.open_disputes > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'} />
                   </div>
 
                   {/* Revenue */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-1 bg-gray-950 rounded-2xl p-5 text-white relative overflow-hidden">
-                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(249,115,22,0.15),transparent_70%)]" />
-                      <div className="relative">
-                        <p className="text-gray-400 text-xs font-medium mb-1">Revenue total liberado</p>
-                        <p className="text-3xl font-black text-white">{fmt(stats.revenue_total)}</p>
-                        <p className="text-gray-500 text-xs mt-2">En escrow: <span className="text-amber-400 font-semibold">{fmt(stats.revenue_escrow)}</span></p>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-gray-950 rounded-2xl p-5 text-white relative overflow-hidden">
+                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(249,115,22,0.2),transparent_70%)]" />
+                      <div className="relative space-y-2">
+                        <p className="text-gray-400 text-xs font-medium">Revenue total</p>
+                        <p className="text-2xl font-black text-white">{fmt(stats.revenue_total)}</p>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between"><span className="text-gray-500">En escrow</span><span className="text-amber-400">{fmt(stats.revenue_escrow)}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">Comisiones</span><span className="text-orange-400">{fmt(stats.platform_fees)}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">Reembolsado</span><span className="text-red-400">{fmt(stats.revenue_refunded)}</span></div>
+                        </div>
                       </div>
                     </div>
-                    <div className="md:col-span-2 bg-white rounded-2xl p-5 border border-gray-100">
-                      <p className="text-sm font-bold text-gray-900 mb-3">Revenue por mes</p>
+                    <div className="md:col-span-3 bg-white rounded-2xl p-5 border border-gray-100">
+                      <p className="text-sm font-bold text-gray-900 mb-3">Revenue por mes — últimos 6 meses</p>
                       <BarChart data={(stats.revenue_by_month ?? []).map(m => ({ ...m, label: m.month?.slice(5), total: parseFloat(m.revenue ?? 0) }))} color="bg-emerald-500" />
                     </div>
                   </div>
 
-                  {/* Top expertos + Nuevos usuarios */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {stats.top_experts?.length > 0 && (
+                  {/* Gráficas + Categorías */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="bg-white rounded-2xl p-5 border border-gray-100">
+                      <p className="text-sm font-bold text-gray-900 mb-3">Jales — últimos 14 días</p>
+                      <BarChart data={stats.jobs_by_day} />
+                      <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                        <span>{stats.jobs_by_day?.[0]?.date}</span>
+                        <span>{stats.jobs_by_day?.[stats.jobs_by_day?.length - 1]?.date}</span>
+                      </div>
+                    </div>
+
+                    {stats.jobs_by_category?.length > 0 && (
                       <div className="bg-white rounded-2xl p-5 border border-gray-100">
-                        <p className="text-sm font-bold text-gray-900 mb-4">🏆 Top expertos por ingresos</p>
-                        <div className="space-y-3">
-                          {stats.top_experts.map((e, i) => (
-                            <div key={i} className="flex items-center gap-3">
-                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-gray-400' : 'bg-orange-300'}`}>{i+1}</span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-900 truncate">{e.name}</p>
-                                <div className="w-full bg-gray-100 rounded-full h-1 mt-1">
-                                  <div className="bg-orange-500 h-1 rounded-full" style={{ width: `${(e.earned / stats.top_experts[0].earned) * 100}%` }} />
-                                </div>
+                        <p className="text-sm font-bold text-gray-900 mb-3">Jales por categoría</p>
+                        <div className="space-y-2.5">
+                          {stats.jobs_by_category.slice(0, 6).map((c, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500 w-24 truncate">{c.category}</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-2">
+                                <div className="bg-orange-500 h-2 rounded-full" style={{ width: `${(c.total / stats.jobs_by_category[0].total) * 100}%` }} />
                               </div>
-                              <span className="text-sm font-bold text-emerald-600 shrink-0">{fmt(e.earned)}</span>
+                              <span className="text-xs font-semibold text-gray-700 w-6 text-right">{c.total}</span>
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
+
+                    {stats.top_experts?.length > 0 && (
+                      <div className="bg-white rounded-2xl p-5 border border-gray-100">
+                        <p className="text-sm font-bold text-gray-900 mb-3">🏆 Top expertos</p>
+                        <div className="space-y-3">
+                          {stats.top_experts.map((e, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0 ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-gray-400' : 'bg-orange-300'}`}>{i+1}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-gray-900 truncate">{e.name}</p>
+                                <div className="w-full bg-gray-100 rounded-full h-1 mt-0.5">
+                                  <div className="bg-orange-500 h-1 rounded-full" style={{ width: `${(e.earned / stats.top_experts[0].earned) * 100}%` }} />
+                                </div>
+                              </div>
+                              <span className="text-xs font-bold text-emerald-600 shrink-0">{fmt(e.earned)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Revenue por categoría + Actividad reciente */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {stats.revenue_by_category?.length > 0 && (
+                      <div className="bg-white rounded-2xl p-5 border border-gray-100">
+                        <p className="text-sm font-bold text-gray-900 mb-3">Revenue por categoría</p>
+                        <div className="space-y-2.5">
+                          {stats.revenue_by_category.map((c, i) => (
+                            <div key={i} className="flex items-center justify-between gap-3">
+                              <span className="text-xs text-gray-600 flex-1 truncate">{c.category}</span>
+                              <div className="w-24 bg-gray-100 rounded-full h-1.5">
+                                <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${(parseFloat(c.revenue) / parseFloat(stats.revenue_by_category[0].revenue)) * 100}%` }} />
+                              </div>
+                              <span className="text-xs font-bold text-gray-800 w-20 text-right">{fmt(c.revenue)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="bg-white rounded-2xl p-5 border border-gray-100">
-                      <p className="text-sm font-bold text-gray-900 mb-4">Jales publicados — últimos 14 días</p>
-                      <BarChart data={stats.jobs_by_day} />
-                      <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                        <span>{stats.jobs_by_day?.[0]?.date}</span>
-                        <span>{stats.jobs_by_day?.[stats.jobs_by_day?.length - 1]?.date}</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-bold text-gray-900">Actividad reciente</p>
+                        <button onClick={fetchStats} className="text-xs text-orange-500 hover:underline">↺ Actualizar</button>
+                      </div>
+                      <div className="space-y-3 max-h-56 overflow-y-auto">
+                        {stats.activity?.length === 0 && <p className="text-xs text-gray-400">Sin actividad</p>}
+                        {stats.activity?.map((a, i) => (
+                          <div key={i} className="flex items-start gap-2.5">
+                            <span className="text-base shrink-0">{a.icon}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-gray-700 leading-relaxed">{a.text}</p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{a.time}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -835,6 +956,150 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── TAB: RESEÑAS ── */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-gray-900">Gestión de reseñas</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Modera las calificaciones de la plataforma</p>
+                </div>
+                <select value={reviewFilter} onChange={e => { setReviewFilter(e.target.value); setReviewPage(1); }}
+                  className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none">
+                  <option value="">Todas las calificaciones</option>
+                  <option value="2">⭐ Solo 1-2 estrellas</option>
+                  <option value="3">⭐ Máximo 3 estrellas</option>
+                </select>
+              </div>
+              {reviewsLoading ? (
+                <div className="flex justify-center py-12"><svg className="animate-spin w-8 h-8 text-orange-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-100">
+                      <thead className="bg-gray-50">
+                        <tr>{['#','Trabajo','Cliente','Experto','Rating','Comentario','Fecha',''].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {(reviews ?? []).length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">Sin reseñas</td></tr>}
+                        {(reviews ?? []).map(r => (
+                          <tr key={r.id} className="hover:bg-gray-50/50 group">
+                            <td className="px-4 py-3 text-xs text-gray-400">#{r.id}</td>
+                            <td className="px-4 py-3 text-xs text-gray-600 max-w-[120px] truncate">{r.job?.title ?? '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{r.client?.name ?? '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{r.expert?.name ?? '—'}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <span className={`text-sm font-bold ${r.rating >= 4 ? 'text-emerald-600' : r.rating >= 3 ? 'text-amber-600' : 'text-red-500'}`}>{r.rating}</span>
+                                <span className="text-amber-400">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate italic">{r.comment ? `"${r.comment}"` : <span className="text-gray-300">Sin comentario</span>}</td>
+                            <td className="px-4 py-3 text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('es-MX')}</td>
+                            <td className="px-4 py-3">
+                              <button onClick={() => handleDeleteReview(r.id)}
+                                className="opacity-0 group-hover:opacity-100 px-2.5 py-1 text-xs text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all font-medium">
+                                Eliminar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Pagination meta={reviewsMeta} onPage={setReviewPage} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── TAB: NOTIFICACIONES ── */}
+          {activeTab === 'notifications' && (
+            <div className="grid lg:grid-cols-3 gap-6">
+              {/* Enviar notificación */}
+              <div className="lg:col-span-1">
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden sticky top-24">
+                  <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
+                    <h3 className="font-bold text-gray-900 text-sm">📢 Enviar notificación</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Broadcast a usuarios de la plataforma</p>
+                  </div>
+                  <form onSubmit={handleBroadcast} className="p-5 space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Destinatarios</label>
+                      <select value={broadcastForm.target} onChange={e => setBroadcastForm(p => ({ ...p, target: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30">
+                        <option value="all">Todos los usuarios</option>
+                        <option value="clients">Solo clientes</option>
+                        <option value="experts">Solo expertos</option>
+                        <option value="user">Usuario específico</option>
+                      </select>
+                    </div>
+                    {broadcastForm.target === 'user' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">ID del usuario</label>
+                        <input type="number" value={broadcastForm.user_id} onChange={e => setBroadcastForm(p => ({ ...p, user_id: e.target.value }))}
+                          placeholder="Ej. 5" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Título *</label>
+                      <input type="text" value={broadcastForm.title} onChange={e => setBroadcastForm(p => ({ ...p, title: e.target.value }))} required
+                        placeholder="Ej. ¡Nueva función disponible!" maxLength={100}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Mensaje *</label>
+                      <textarea value={broadcastForm.body} onChange={e => setBroadcastForm(p => ({ ...p, body: e.target.value }))} required
+                        placeholder="Descripción del mensaje..." rows={3} maxLength={500}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 resize-none" />
+                      <p className="text-xs text-gray-400 mt-1 text-right">{broadcastForm.body.length}/500</p>
+                    </div>
+                    <button type="submit" disabled={broadcastSending}
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors disabled:opacity-70">
+                      {broadcastSending ? 'Enviando...' : '📤 Enviar notificación'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Log de notificaciones */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900">Historial de notificaciones</h3>
+                  <button onClick={fetchNotifs} className="text-xs text-orange-500 hover:underline">↺ Actualizar</button>
+                </div>
+                {notifsLoading ? (
+                  <div className="flex justify-center py-12"><svg className="animate-spin w-8 h-8 text-orange-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                    <div className="divide-y divide-gray-50">
+                      {(notifs ?? []).length === 0 && <p className="text-sm text-gray-400 text-center py-8">Sin notificaciones</p>}
+                      {(notifs ?? []).map(n => (
+                        <div key={n.id} className="px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50/50">
+                          <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'bg-gray-300' : 'bg-orange-500'}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="text-sm font-semibold text-gray-900">{n.title}</p>
+                              <Badge label={n.type} color="bg-gray-100 text-gray-500" />
+                            </div>
+                            <p className="text-xs text-gray-500">{n.body}</p>
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              Para: <span className="font-medium">{n.user?.name ?? `#${n.user_id}`}</span>
+                              {' · '}{new Date(n.created_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Pagination meta={notifsMeta} onPage={setNotifPage} />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
