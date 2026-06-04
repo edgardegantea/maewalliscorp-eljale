@@ -35,7 +35,11 @@ class ExpertProfileController extends Controller
             $query->where('city', 'ilike', '%' . $request->city . '%');
         }
 
-        $experts = $query->orderByDesc('is_premium')->orderByDesc('average_rating')->get()
+        $experts = $query
+            ->orderByRaw("CASE WHEN is_featured = 1 AND featured_until > NOW() THEN 0 ELSE 1 END")
+            ->orderByDesc('is_premium')
+            ->orderByDesc('average_rating')
+            ->get()
             ->map(fn($p) => [
                 'id'               => $p->user->id,
                 'name'             => $p->user->name,
@@ -53,7 +57,12 @@ class ExpertProfileController extends Controller
                 'badge_top_rated'      => $p->badge_top_rated,
                 'badge_fast_responder' => $p->badge_fast_responder,
                 'badge_most_requested' => $p->badge_most_requested,
-                'is_premium'           => $p->is_premium && $p->premium_expires_at && now()->isBefore($p->premium_expires_at),
+                'is_premium'    => $p->is_premium && $p->premium_expires_at && now()->isBefore($p->premium_expires_at),
+                'is_featured'   => $p->is_featured && $p->featured_until && now()->isBefore($p->featured_until),
+                'available_days'=> $p->available_days ? json_decode($p->available_days, true) : [],
+                'available_from'=> $p->available_from,
+                'available_to'  => $p->available_to,
+                'video_url'     => $p->video_url,
             ]);
 
         return response()->json($experts);
@@ -116,26 +125,48 @@ class ExpertProfileController extends Controller
         $completedJobs = \App\Models\ServiceJob::where('expert_id', $user->id)
             ->where('status', 'completado')->count();
 
-        $totalEarned = \App\Models\Payment::whereHas('serviceJob', fn($q) =>
-            $q->where('expert_id', $user->id)
-        )->where('status', 'liberado_al_experto')->sum('amount');
-
-        $pendingPayment = \App\Models\Payment::whereHas('serviceJob', fn($q) =>
-            $q->where('expert_id', $user->id)->where('status', 'asignado')
-        )->where('status', 'retenido_en_app')->sum('amount');
-
         $activeJobs = \App\Models\ServiceJob::where('expert_id', $user->id)
             ->where('status', 'asignado')->count();
+
+        // Ganancias netas: usar expert_amount si existe, sino amount * 0.9 (descuento de comisión)
+        $payments = \App\Models\Payment::whereHas('serviceJob', fn($q) =>
+            $q->where('expert_id', $user->id)
+        )->where('status', 'liberado_al_experto')->get(['amount', 'expert_amount']);
+
+        $totalEarned = $payments->sum(function ($p) {
+            return $p->expert_amount > 0 ? $p->expert_amount : $p->amount * 0.9;
+        });
+
+        // Monto por cobrar (en escrow)
+        $pendingPayments = \App\Models\Payment::whereHas('serviceJob', fn($q) =>
+            $q->where('expert_id', $user->id)->where('status', 'asignado')
+        )->where('status', 'retenido_en_app')->get(['amount', 'expert_amount']);
+
+        $pendingPayment = $pendingPayments->sum(function ($p) {
+            return $p->expert_amount > 0 ? $p->expert_amount : $p->amount * 0.9;
+        });
+
+        // Ingresos por mes (últimos 6 meses)
+        $earningsByMonth = \App\Models\Payment::whereHas('serviceJob', fn($q) =>
+            $q->where('expert_id', $user->id)
+        )
+        ->where('status', 'liberado_al_experto')
+        ->where('created_at', '>=', now()->subMonths(6))
+        ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, SUM(COALESCE(NULLIF(expert_amount,0), amount * 0.9)) as earned")
+        ->groupBy('month')
+        ->orderBy('month')
+        ->get();
 
         $user->load('expertProfile');
 
         return response()->json([
-            'completed_jobs'  => $completedJobs,
-            'active_jobs'     => $activeJobs,
-            'total_earned'    => (float) $totalEarned,
-            'pending_payment' => (float) $pendingPayment,
-            'average_rating'  => (float) ($user->expertProfile->average_rating ?? 0),
-            'total_reviews'   => $user->expertProfile->total_reviews ?? 0,
+            'completed_jobs'   => $completedJobs,
+            'active_jobs'      => $activeJobs,
+            'total_earned'     => (float) round($totalEarned, 2),
+            'pending_payment'  => (float) round($pendingPayment, 2),
+            'average_rating'   => (float) ($user->expertProfile->average_rating ?? 0),
+            'total_reviews'    => $user->expertProfile->total_reviews ?? 0,
+            'earnings_by_month'=> $earningsByMonth,
         ]);
     }
 
@@ -156,12 +187,16 @@ class ExpertProfileController extends Controller
             'latitude'            => 'nullable|numeric|between:-90,90',
             'longitude'           => 'nullable|numeric|between:-180,180',
             'coverage_radius_km'  => 'nullable|integer|min:1|max:200',
+            'available_days'      => 'nullable|array',
+            'available_days.*'    => 'string|max:10',
+            'available_from'      => 'nullable|string|max:5',
+            'available_to'        => 'nullable|string|max:5',
+            'video_url'           => 'nullable|url|max:500',
         ]);
 
         $profile = \App\Models\ExpertProfile::where('user_id', $user->id)->first();
 
         if (!$profile) {
-            // Auto-crear perfil con categoría por defecto
             $defaultCategory = \App\Models\Category::first();
             $profile = \App\Models\ExpertProfile::create([
                 'user_id'          => $user->id,
@@ -172,9 +207,27 @@ class ExpertProfileController extends Controller
             ]);
         }
 
-        $profile->update($request->only('bio', 'hourly_rate', 'city', 'state', 'latitude', 'longitude', 'coverage_radius_km'));
+        $fillable = ['bio', 'hourly_rate', 'city', 'state', 'latitude', 'longitude', 'coverage_radius_km',
+                     'available_from', 'available_to', 'video_url'];
 
-        return response()->json(['message' => 'Perfil actualizado.', 'profile' => $profile]);
+        $data = $request->only($fillable);
+
+        // available_days viene como array, guardarlo como JSON
+        if ($request->has('available_days')) {
+            $data['available_days'] = $request->available_days
+                ? json_encode($request->available_days)
+                : null;
+        }
+
+        $profile->update($data);
+
+        // Devolver available_days como array para el frontend
+        $profileData = $profile->fresh()->toArray();
+        if (isset($profileData['available_days']) && is_string($profileData['available_days'])) {
+            $profileData['available_days'] = json_decode($profileData['available_days'], true);
+        }
+
+        return response()->json(['message' => 'Perfil actualizado.', 'profile' => $profileData]);
     }
 
     public function completeOnboarding(\Illuminate\Http\Request $request)
@@ -203,7 +256,7 @@ class ExpertProfileController extends Controller
         ]);
     }
 
-    // Perfil público extendido (incluye portfolio)
+    // Perfil público extendido (incluye portfolio, featured, available_days)
     public function show($userId)
     {
         $expert = \App\Models\User::with(['expertProfile.category', 'expertProfile.portfolio'])
@@ -217,10 +270,26 @@ class ExpertProfileController extends Controller
 
         $profile = $expert->expertProfile;
 
+        // Normalizar available_days: JSON string → array
+        $profileData = $profile ? $profile->toArray() : null;
+        if ($profileData && isset($profileData['available_days']) && is_string($profileData['available_days'])) {
+            $profileData['available_days'] = json_decode($profileData['available_days'], true) ?? [];
+        }
+
+        // Featured activo?
+        $isFeatured = $profile &&
+            $profile->is_featured &&
+            $profile->featured_until &&
+            now()->lt($profile->featured_until);
+
+        if ($profileData) {
+            $profileData['is_featured'] = $isFeatured;
+        }
+
         return response()->json([
             'id'             => $expert->id,
             'name'           => $expert->name,
-            'profile'        => $profile,
+            'profile'        => $profileData,
             'portfolio'      => $profile?->portfolio ?? [],
             'reviews'        => $reviews,
             'completed_jobs' => $completedJobs,

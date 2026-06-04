@@ -167,14 +167,21 @@ class ServiceJobController extends Controller
             return response()->json(['message' => 'Este trabajo no tiene pago en efectivo'], 422);
         }
 
+        $amount     = $job->payment->amount ?? $job->budget ?? 0;
+        $platformFee = round($amount * 0.10, 2);
+        $expertAmt   = round($amount - $platformFee, 2);
+
         $job->payment->update([
             'status'           => 'liberado_al_experto',
             'cash_confirmed_at'=> now(),
+            'platform_fee'     => $platformFee,
+            'expert_amount'    => $expertAmt,
         ]);
         $job->update(['status' => 'completado']);
 
         Notify::send($job->expert_id, 'cash_payment_confirmed', '💵 Pago en efectivo confirmado',
-            "El cliente confirmó el pago de \"{$job->title}\".", $job->id, 'ServiceJob');
+            "El cliente confirmó el pago de \"{$job->title}\". Recibirás $" . number_format($expertAmt, 2) . " MXN.",
+            $job->id, 'ServiceJob');
 
         return response()->json(['message' => 'Pago confirmado.']);
     }
@@ -372,17 +379,29 @@ class ServiceJobController extends Controller
             return response()->json(['message' => 'No hay fondos retenidos para liberar'], 400);
         }
 
-        $job->payment->update(['status' => 'liberado_al_experto']);
+        // Calcular expert_amount si no estaba seteado (pagos legacy sin fee)
+        $payment = $job->payment;
+        $amount  = $payment->amount ?? $job->budget ?? 0;
+        $updates = ['status' => 'liberado_al_experto'];
+        if ($payment->expert_amount <= 0) {
+            $fee     = round($amount * 0.10, 2);
+            $updates['platform_fee']  = $fee;
+            $updates['expert_amount'] = round($amount - $fee, 2);
+        }
+        $payment->update($updates);
+
         $job->update(['status' => 'completado']);
         $job->load(['expert', 'client']);
         broadcast(new JobStatusChanged($job));
+
+        $expertNet = $payment->fresh()->expert_amount;
 
         // Notificar al experto
         Notify::send(
             $job->expert_id,
             'payment_released',
-            '¡Pago liberado!',
-            "El cliente confirmó el trabajo «{$job->title}». Tu pago fue liberado.",
+            '💸 ¡Pago liberado!',
+            "El cliente confirmó «{$job->title}». Recibirás $" . number_format($expertNet, 2) . " MXN.",
             $job->id,
             'ServiceJob'
         );

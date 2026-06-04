@@ -355,13 +355,22 @@ class AdminController extends Controller
             return response()->json(['message' => 'Solo se pueden liberar pagos retenidos.'], 422);
         }
 
-        $payment->update(['status' => 'liberado_al_experto']);
+        // Calcular expert_amount si falta
+        $updates = ['status' => 'liberado_al_experto'];
+        if ($payment->expert_amount <= 0 && $payment->amount > 0) {
+            $fee = round($payment->amount * 0.10, 2);
+            $updates['platform_fee']  = $fee;
+            $updates['expert_amount'] = round($payment->amount - $fee, 2);
+        }
+        $payment->update($updates);
         $payment->serviceJob?->update(['status' => 'completado']);
+
+        $expertNet = $payment->fresh()->expert_amount;
 
         if ($payment->serviceJob?->expert_id) {
             Notify::send($payment->serviceJob->expert_id, 'payment_released',
-                '💰 Pago liberado',
-                "Se liberó el pago de {$payment->serviceJob->title}.",
+                '💸 Pago liberado',
+                "Se liberó $" . number_format($expertNet, 2) . " MXN de \"{$payment->serviceJob->title}\".",
                 $payment->id, 'Payment');
         }
 
