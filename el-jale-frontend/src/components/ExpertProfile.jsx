@@ -222,6 +222,22 @@ export default function ExpertProfile() {
           </div>
         )}
 
+        {/* Video de presentación */}
+        {profile?.video_url && (
+          <div className="card p-6">
+            <h2 className="font-bold text-gray-900 mb-4">📹 Video de presentación</h2>
+            <div className="aspect-video rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+              <iframe
+                src={profile.video_url.replace('watch?v=', 'embed/')}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={`Video de ${expert.name}`}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Portfolio */}
         {expert.portfolio?.length > 0 && (
           <div className="card p-6">

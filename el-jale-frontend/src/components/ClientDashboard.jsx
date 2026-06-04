@@ -18,6 +18,8 @@ import PriceEstimator from './PriceEstimator';
 import { lazy, Suspense, useState as useMapState } from 'react';
 const MapaExpertos = lazy(() => import('./MapaExpertos'));
 import ReferralWidget from './ReferralWidget';
+import LoyaltyWidget from './LoyaltyWidget';
+import MaintenancePackages from './MaintenancePackages';
 
 const STATUS_CONFIG = {
   buscando:   { label: 'Buscando Experto', cls: 'badge-buscando' },
@@ -126,6 +128,14 @@ export default function ClientDashboard() {
   useEffect(() => {
     fetchCategories();
     fetchMyJobs();
+    // Solicitar permiso de notificaciones push
+    if ('Notification' in window && Notification.permission === 'default') {
+      setTimeout(() => {
+        Notification.requestPermission().then(perm => {
+          if (perm === 'granted') toast.success('🔔 Notificaciones activadas. Te avisaremos cuando lleguen cotizaciones.');
+        });
+      }, 5000);
+    }
   }, []);
 
   const fetchCategories = async () => {
@@ -828,6 +838,13 @@ export default function ClientDashboard() {
                             </div>
                           )}
 
+                          {/* Garantía 30 días en trabajos completados */}
+                          {job.status === 'completado' && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl text-blue-700 bg-blue-50 border border-blue-200">
+                              🛡️ Garantía 30 días
+                            </span>
+                          )}
+
                           {job.status === 'completado' && !job.review && (
                             <button
                               onClick={() => setReviewJob(job)}
@@ -873,10 +890,10 @@ export default function ClientDashboard() {
                                   payment_method: 'mercadopago',
                                 }));
                                 document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth' });
-                                toast.success(`📋 Formulario prellenado con los datos del trabajo anterior. ¡${job.expert.name} será notificado!`);
+                                toast.success(`📋 Formulario prellenado. ¡${job.expert.name} será notificado directamente!`);
                               }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl text-brand-primary bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all">
-                              🔁 Contratar a {job.expert.name} de nuevo
+                              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl text-white bg-orange-500 hover:bg-orange-600 transition-all shadow-sm shadow-orange-500/20 active:scale-95">
+                              🔁 Volver a contratar a {job.expert.name.split(' ')[0]}
                             </button>
                           )}
 
@@ -941,6 +958,22 @@ export default function ClientDashboard() {
 
           {/* Columna Derecha */}
           <div className="xl:col-span-1 space-y-4">
+            {/* Loyalty Points */}
+            <LoyaltyWidget />
+
+            {/* Paquetes de mantenimiento */}
+            <MaintenancePackages
+              onSelect={(pkg) => {
+                setNewJob(prev => ({
+                  ...prev,
+                  title: `Paquete ${pkg.name}`,
+                  description: `Solicito el ${pkg.name}: ${pkg.services.join(', ')}.`,
+                }));
+                document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth' });
+                toast.success(`📦 Paquete ${pkg.name} preseleccionado`);
+              }}
+            />
+
             {/* Garantía */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-dark to-slate-800 p-6 text-white">
               <div className="absolute -top-8 -right-8 w-32 h-32 bg-brand-primary/10 rounded-full" />

@@ -15,6 +15,7 @@ import ExpertOnboarding from './ExpertOnboarding';
 import PremiumCard from './PremiumCard';
 import PhoneVerification from './PhoneVerification';
 import ReferralWidget from './ReferralWidget';
+import InspectionChecklistModal from './InspectionChecklistModal';
 
 const STATUS_CONFIG = {
   asignado:   { label: 'En Progreso',  color: 'bg-blue-100 text-blue-800' },
@@ -57,6 +58,10 @@ export default function ExpertDashboard() {
   const [bidJob, setBidJob] = useState(null);
   const [bidForm, setBidForm] = useState({ message: '', amount: '' });
   const [submittingBid, setSubmittingBid] = useState(false);
+  const [checklistJob, setChecklistJob] = useState(null); // job esperando checklist
+  const [beforePhotos, setBeforePhotos] = useState([]);   // fotos "antes"
+  const [photoMode, setPhotoMode] = useState({});         // { jobId: 'before'|'after' }
+  const [videoUrl, setVideoUrl] = useState(user?.expert_profile?.video_url ?? '');
   const [availableDays, setAvailableDays] = useState(
     user?.expert_profile?.available_days ?? []
   );
@@ -89,6 +94,14 @@ export default function ExpertDashboard() {
 
   useEffect(() => {
     Promise.all([fetchAvailableJobs(), fetchActiveJobs()]).finally(() => setLoading(false));
+    // Solicitar permiso de notificaciones push
+    if ('Notification' in window && Notification.permission === 'default') {
+      setTimeout(() => {
+        Notification.requestPermission().then(perm => {
+          if (perm === 'granted') toast.success('🔔 Notificaciones activadas. Te avisamos cuando lleguen nuevos trabajos.');
+        });
+      }, 4000);
+    }
   }, []);
 
   const fetchAvailableJobs = async () => {
@@ -135,6 +148,7 @@ export default function ExpertDashboard() {
         available_days: availableDays,
         available_from: availableFrom,
         available_to: availableTo,
+        video_url: videoUrl || null,
         ...location,
       });
       toast.success('Perfil actualizado.');
@@ -276,6 +290,29 @@ export default function ExpertDashboard() {
 
       {chatJob && (
         <ChatModal job={chatJob} currentUserId={user?.id} onClose={() => setChatJob(null)} />
+      )}
+
+      {checklistJob && (
+        <InspectionChecklistModal
+          jobTitle={checklistJob.title}
+          onClose={() => setChecklistJob(null)}
+          onConfirm={async ({ checks, notes }) => {
+            setChecklistJob(null);
+            if (evidencePhotos.length === 0) { toast.error('Selecciona fotos de evidencia primero.'); return; }
+            setUploadingFor(checklistJob.id);
+            const formData = new FormData();
+            evidencePhotos.forEach(p => formData.append('photos[]', p));
+            if (notes) formData.append('completion_notes', notes);
+            formData.append('checklist', JSON.stringify(checks));
+            try {
+              await api.post(`/jobs/${checklistJob.id}/expert-photos`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+              toast.success('✅ Fotos y checklist enviados. El cliente liberará el pago pronto.');
+              setEvidencePhotos([]);
+              fetchActiveJobs();
+            } catch (err) { toast.error(err.response?.data?.message || 'Error al subir fotos.'); }
+            finally { setUploadingFor(null); }
+          }}
+        />
       )}
 
       {/* Modal de cotización */}
@@ -781,37 +818,63 @@ export default function ExpertDashboard() {
                         </div>
                       )}
 
-                      {/* Upload de fotos de evidencia (solo en trabajos asignados) */}
+                      {/* Upload fotos Antes / Después + Checklist */}
                       {job.status === 'asignado' && (
-                        <div className="px-5 py-3 border-t border-blue-100 bg-blue-50">
-                          <p className="text-xs font-medium text-blue-800 mb-2">Sube fotos del trabajo terminado para que el cliente libere el pago:</p>
+                        <div className="px-5 py-4 border-t border-blue-100 bg-blue-50 space-y-3">
+                          <p className="text-xs font-bold text-blue-800">📸 Fotos de evidencia</p>
 
-                          {job.expert_photos?.length > 0 && (
-                            <div className="flex gap-2 flex-wrap mb-2">
-                              {job.expert_photos.map((path, i) => (
-                                <img key={i} src={`${storageUrl}/${path}`} className="w-12 h-12 object-cover rounded border" alt="" />
-                              ))}
+                          {/* Fotos antes/después del cliente */}
+                          {job.client_photos?.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Antes (del cliente)</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {job.client_photos.map((path, i) => (
+                                  <div key={i} className="relative">
+                                    <img src={`${storageUrl}/${path}`} className="w-14 h-14 object-cover rounded-xl border-2 border-amber-300" alt="" />
+                                    <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] font-bold px-1 rounded-full">ANTES</span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
 
-                          {uploadMsg.id === job.id && (
-                            <p className={`text-xs mb-2 font-medium ${uploadMsg.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                              {uploadMsg.text}
-                            </p>
+                          {/* Fotos de evidencia ya subidas */}
+                          {job.expert_photos?.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Después (tu trabajo)</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {job.expert_photos.map((path, i) => (
+                                  <div key={i} className="relative">
+                                    <img src={`${storageUrl}/${path}`} className="w-14 h-14 object-cover rounded-xl border-2 border-emerald-400" alt="" />
+                                    <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[9px] font-bold px-1 rounded-full">DESPUÉS</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
 
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="file" accept="image/*" multiple
+                          {/* Upload nuevas fotos */}
+                          <div className="bg-white rounded-xl p-3 border border-blue-100">
+                            <p className="text-[10px] font-semibold text-gray-500 mb-2">Subir fotos del trabajo terminado</p>
+                            <input type="file" accept="image/*" multiple
                               onChange={e => setEvidencePhotos(Array.from(e.target.files).slice(0, 5))}
-                              className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-medium file:bg-white file:text-blue-700"
+                              className="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer mb-2"
                             />
+                            {evidencePhotos.length > 0 && (
+                              <div className="flex gap-1.5 flex-wrap mb-2">
+                                {evidencePhotos.map((f, i) => (
+                                  <img key={i} src={URL.createObjectURL(f)} className="w-12 h-12 object-cover rounded-lg border" alt="" />
+                                ))}
+                              </div>
+                            )}
                             <button
-                              onClick={() => handleUploadEvidence(job.id)}
+                              onClick={() => {
+                                if (evidencePhotos.length === 0) { toast.error('Selecciona fotos primero.'); return; }
+                                setChecklistJob(job);
+                              }}
                               disabled={uploadingFor === job.id || evidencePhotos.length === 0}
-                              className="flex-shrink-0 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
-                            >
-                              {uploadingFor === job.id ? 'Subiendo...' : 'Subir'}
+                              className="w-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-xl transition-colors disabled:opacity-50">
+                              {uploadingFor === job.id ? '⏳ Subiendo...' : '📋 Completar checklist y subir fotos'}
                             </button>
                           </div>
                         </div>
@@ -1065,6 +1128,27 @@ export default function ExpertDashboard() {
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-1">Los clientes verán "desde $X/hora" en tu perfil.</p>
+                </div>
+
+                {/* Video de presentación */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    📹 Video de presentación <span className="text-gray-400 font-normal">(URL de YouTube)</span>
+                  </label>
+                  <input type="url" value={videoUrl} onChange={e => setVideoUrl(e.target.value)}
+                    placeholder="https://youtube.com/watch?v=..."
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400" />
+                  <p className="text-xs text-gray-400 mt-1">Los clientes verán tu video en tu perfil público. Preséntate y muestra tu trabajo.</p>
+                  {videoUrl && (
+                    <div className="mt-2 aspect-video rounded-xl overflow-hidden border border-gray-200">
+                      <iframe
+                        src={videoUrl.replace('watch?v=', 'embed/')}
+                        className="w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Disponibilidad semanal */}
