@@ -16,6 +16,7 @@ import PremiumCard from './PremiumCard';
 import PhoneVerification from './PhoneVerification';
 import ReferralWidget from './ReferralWidget';
 import InspectionChecklistModal from './InspectionChecklistModal';
+import usePWAInstall from '../hooks/usePWAInstall';
 
 const STATUS_CONFIG = {
   asignado:   { label: 'En Progreso',  color: 'bg-blue-100 text-blue-800' },
@@ -56,9 +57,10 @@ export default function ExpertDashboard() {
     !user?.expert_profile?.onboarding_completed
   );
   const [bidJob, setBidJob] = useState(null);
-  const [bidForm, setBidForm] = useState({ message: '', amount: '' });
+  const [bidForm, setBidForm] = useState({ message: '', amount: '', requires_visit: false, visit_date: '' });
   const [submittingBid, setSubmittingBid] = useState(false);
-  const [checklistJob, setChecklistJob] = useState(null); // job esperando checklist
+  const [checklistJob, setChecklistJob] = useState(null);
+  const { canInstall, install } = usePWAInstall(); // job esperando checklist
   const [beforePhotos, setBeforePhotos] = useState([]);   // fotos "antes"
   const [photoMode, setPhotoMode] = useState({});         // { jobId: 'before'|'after' }
   const [videoUrl, setVideoUrl] = useState(user?.expert_profile?.video_url ?? '');
@@ -129,7 +131,12 @@ export default function ExpertDashboard() {
     if (!bidForm.message.trim()) return;
     setSubmittingBid(true);
     try {
-      await api.post(`/jobs/${bidJob.id}/bids`, { message: bidForm.message, amount: bidForm.amount || null });
+      await api.post(`/jobs/${bidJob.id}/bids`, {
+        message: bidForm.message,
+        amount: bidForm.amount || null,
+        requires_visit: bidForm.requires_visit,
+        visit_date: bidForm.visit_date || null,
+      });
       toast.success('¡Cotización enviada! El cliente la revisará pronto.');
       setBidJob(null);
       setBidForm({ message: '', amount: '' });
@@ -361,10 +368,35 @@ export default function ExpertDashboard() {
                 </div>
                 <p className="text-xs text-gray-400 mt-1">Deja vacío para cotizar al ver el trabajo en persona.</p>
               </div>
+              {/* Visita presencial */}
+              <div>
+                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${bidForm.requires_visit ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <input type="checkbox" checked={bidForm.requires_visit}
+                    onChange={e => setBidForm(f => ({ ...f, requires_visit: e.target.checked }))} className="sr-only" />
+                  <span className="text-xl">🏠</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-900">Solicitar visita previa gratuita</p>
+                    <p className="text-xs text-gray-500">Para darte un presupuesto exacto necesito ver el trabajo</p>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full transition-colors flex-shrink-0 ${bidForm.requires_visit ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                    <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${bidForm.requires_visit ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </div>
+                </label>
+                {bidForm.requires_visit && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Fecha de visita propuesta</label>
+                    <input type="date" value={bidForm.visit_date}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setBidForm(f => ({ ...f, visit_date: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/30" />
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setBidJob(null)} className="btn-secondary flex-1">Cancelar</button>
                 <button type="submit" disabled={submittingBid || !bidForm.message.trim()} className="btn-primary flex-1">
-                  {submittingBid ? 'Enviando...' : '📤 Enviar cotización'}
+                  {submittingBid ? 'Enviando...' : bidForm.requires_visit ? '🏠 Solicitar visita' : '📤 Enviar cotización'}
                 </button>
               </div>
             </form>
@@ -383,6 +415,19 @@ export default function ExpertDashboard() {
             localStorage.setItem('user', JSON.stringify(stored));
           }}
         />
+      )}
+
+      {canInstall && (
+        <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="text-lg">📱</span>
+            <span>Instala El Jale para recibir notificaciones de nuevos trabajos.</span>
+          </div>
+          <button onClick={install}
+            className="shrink-0 bg-white text-orange-600 text-xs font-bold px-4 py-1.5 rounded-full hover:bg-orange-50 transition-colors">
+            Instalar →
+          </button>
+        </div>
       )}
 
       <nav className="bg-brand-dark shadow-lg sticky top-0 z-40">

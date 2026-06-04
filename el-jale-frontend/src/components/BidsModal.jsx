@@ -181,6 +181,12 @@ export default function BidsModal({ job, onClose, onAccepted }) {
                     <span className="text-xs text-gray-400">{bid.expert.experience_years} años de exp.</span>
                   </div>
 
+                  {bid.requires_visit && (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full w-fit">
+                      🏠 Solicita visita previa gratuita
+                      {bid.visit_date && ` · ${new Date(bid.visit_date + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })}`}
+                    </div>
+                  )}
                   <p className="text-sm text-gray-600 mt-2 leading-relaxed">{bid.message}</p>
 
                   <div className="flex items-center justify-between mt-3">

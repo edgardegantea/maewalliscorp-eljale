@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-jale-v1';
+const CACHE_NAME = 'el-jale-v3';
 
 // Archivos que se cachean en la instalación
 const PRECACHE = [
@@ -72,11 +72,17 @@ self.addEventListener('notificationclick', event => {
   event.notification.close();
   const url = event.notification.data?.url ?? '/';
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then(clientList => {
-      for (const client of clientList) {
-        if (client.url === url && 'focus' in client) return client.focus();
-      }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      const existing = clientList.find(c => c.url.includes(url));
+      if (existing) return existing.focus();
       return clients.openWindow(url);
     })
   );
+});
+
+// Background Sync — reenviar requests fallidos cuando vuelva la red
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(Promise.resolve()); // placeholder para implementación futura con IndexedDB
+  }
 });

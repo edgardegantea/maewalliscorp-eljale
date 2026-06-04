@@ -20,6 +20,53 @@ const MapaExpertos = lazy(() => import('./MapaExpertos'));
 import ReferralWidget from './ReferralWidget';
 import LoyaltyWidget from './LoyaltyWidget';
 import MaintenancePackages from './MaintenancePackages';
+import TipModal from './TipModal';
+import usePWAInstall from '../hooks/usePWAInstall';
+
+// ── Google Calendar / iCal helpers ────────────────────────────────
+function toCalDate(dateStr, timeStr) {
+  const d = new Date(`${dateStr}T${timeStr || '09:00'}:00`);
+  return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+}
+
+function googleCalUrl(job) {
+  if (!job.preferred_date) return null;
+  const start = toCalDate(job.preferred_date, job.preferred_time);
+  const end   = toCalDate(job.preferred_date, job.preferred_time
+    ? String(Number(job.preferred_time.split(':')[0]) + 2).padStart(2,'0') + ':00'
+    : '11:00');
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `El Jale — ${job.title}`,
+    dates: `${start}/${end}`,
+    details: `Experto: ${job.expert?.name ?? '—'}\nServicio: ${job.category?.name ?? '—'}\nPresupuesto: $${job.budget ?? '—'} MXN\n\nGestionado en eljale.maewalliscorp.org`,
+    location: job.address ?? '',
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
+
+function downloadIcal(job) {
+  if (!job.preferred_date) return;
+  const start = toCalDate(job.preferred_date, job.preferred_time);
+  const end   = toCalDate(job.preferred_date, job.preferred_time
+    ? String(Number(job.preferred_time.split(':')[0]) + 2).padStart(2,'0') + ':00'
+    : '11:00');
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//El Jale//ES',
+    'BEGIN:VEVENT',
+    `SUMMARY:El Jale — ${job.title}`,
+    `DTSTART:${start}`, `DTEND:${end}`,
+    `LOCATION:${job.address ?? ''}`,
+    `DESCRIPTION:Experto: ${job.expert?.name ?? '—'} | $${job.budget ?? '—'} MXN`,
+    `URL:https://eljale.maewalliscorp.org`,
+    'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n');
+  const blob = new Blob([ics], { type: 'text/calendar' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `jale-${job.id}.ics`;
+  a.click();
+}
 
 const STATUS_CONFIG = {
   buscando:   { label: 'Buscando Experto', cls: 'badge-buscando' },
@@ -91,7 +138,9 @@ export default function ClientDashboard() {
   const [bidsJob, setBidsJob] = useState(null);
   const [disputeJob, setDisputeJob] = useState(null);
   const [paymentJob, setPaymentJob] = useState(null);
+  const [tipJob, setTipJob]         = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const { canInstall, install } = usePWAInstall();
   const [activeTab, setActiveTab] = useState('jobs');
   const [favorites, setFavorites] = useState([]);
   const [favLoading, setFavLoading] = useState(false);
@@ -246,7 +295,10 @@ export default function ClientDashboard() {
       );
       setMyJobs(updatedJobs);
       toast.success(res.data.message);
-      setReviewJob(updatedJobs.find(j => j.id === jobId));
+      const completedJob = updatedJobs.find(j => j.id === jobId);
+      // Mostrar propina antes de la reseña
+      setTimeout(() => setTipJob(completedJob), 600);
+      setReviewJob(completedJob);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error al liberar el pago.');
     } finally {
@@ -281,6 +333,29 @@ export default function ClientDashboard() {
       )}
       {disputeJob && (
         <DisputeModal job={disputeJob} onClose={() => setDisputeJob(null)} onSubmitted={fetchMyJobs} />
+      )}
+
+      {tipJob && (
+        <TipModal
+          job={tipJob}
+          onClose={() => setTipJob(null)}
+          onTip={() => setTipJob(null)}
+        />
+      )}
+
+      {/* Banner de instalación PWA */}
+      {canInstall && (
+        <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="text-lg">📱</span>
+            <span className="hidden sm:inline">Instala El Jale en tu celular para acceso rápido y notificaciones.</span>
+            <span className="sm:hidden">Instala El Jale en tu celular.</span>
+          </div>
+          <button onClick={install}
+            className="shrink-0 bg-white text-orange-600 text-xs font-bold px-4 py-1.5 rounded-full hover:bg-orange-50 transition-colors active:scale-95">
+            Instalar →
+          </button>
+        </div>
       )}
 
       <nav className="bg-white shadow-nav sticky top-0 z-40">
@@ -929,6 +1004,25 @@ export default function ClientDashboard() {
                             </a>
                           )}
 
+                          {/* Google Calendar */}
+                          {job.status === 'asignado' && job.preferred_date && (
+                            <div className="relative group">
+                              <button className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all">
+                                📅 Agregar al calendario
+                              </button>
+                              <div className="absolute bottom-full left-0 mb-1 hidden group-hover:flex flex-col bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-20 min-w-[160px]">
+                                <a href={googleCalUrl(job)} target="_blank" rel="noreferrer"
+                                  className="flex items-center gap-2 px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                                  <span>📅</span> Google Calendar
+                                </a>
+                                <button onClick={() => downloadIcal(job)}
+                                  className="flex items-center gap-2 px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors text-left">
+                                  <span>📥</span> Descargar .ics
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
                           {job.status === 'asignado' && !job.dispute && (
                             <button onClick={() => setDisputeJob(job)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-xl text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-all">
@@ -1011,6 +1105,26 @@ export default function ClientDashboard() {
                   </li>
                 ))}
               </ol>
+            </div>
+
+            {/* Badge de seguro de daños */}
+            <div className="card p-4 border border-blue-100 bg-blue-50/50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xl">🛡️</span>
+                <p className="text-sm font-bold text-blue-900">Plataforma asegurada</p>
+              </div>
+              <p className="text-xs text-blue-700 leading-relaxed mb-3">
+                Todos los trabajos realizados a través de El Jale están respaldados contra daños accidentales hasta <strong>$5,000 MXN</strong>.
+              </p>
+              <div className="space-y-1.5">
+                {[
+                  '✅ Daños accidentales cubiertos',
+                  '✅ Disputa resuelta en 72 hrs',
+                  '✅ Reembolso garantizado',
+                ].map(i => (
+                  <p key={i} className="text-[11px] text-blue-600 font-medium">{i}</p>
+                ))}
+              </div>
             </div>
 
             {/* Tips para obtener mejores ofertas */}
