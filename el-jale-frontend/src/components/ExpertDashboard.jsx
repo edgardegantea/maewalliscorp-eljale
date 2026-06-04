@@ -17,6 +17,7 @@ import PhoneVerification from './PhoneVerification';
 import ReferralWidget from './ReferralWidget';
 import InspectionChecklistModal from './InspectionChecklistModal';
 import usePWAInstall from '../hooks/usePWAInstall';
+import FeaturedListingModal from './FeaturedListingModal';
 
 const STATUS_CONFIG = {
   asignado:   { label: 'En Progreso',  color: 'bg-blue-100 text-blue-800' },
@@ -60,7 +61,23 @@ export default function ExpertDashboard() {
   const [bidForm, setBidForm] = useState({ message: '', amount: '', requires_visit: false, visit_date: '' });
   const [submittingBid, setSubmittingBid] = useState(false);
   const [checklistJob, setChecklistJob] = useState(null);
-  const { canInstall, install } = usePWAInstall(); // job esperando checklist
+  const [featuredStatus, setFeaturedStatus] = useState(null);
+  const [showFeatured, setShowFeatured]     = useState(false);
+  const { canInstall, install } = usePWAInstall();
+
+  useEffect(() => {
+    if (user?.role === 'expert') {
+      api.get('/featured/status').then(r => setFeaturedStatus(r.data)).catch(() => {});
+    }
+    // Detectar retorno de pago featured
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('featured') === 'success') {
+      const plan = params.get('plan');
+      api.post('/featured/activate', {}).catch(() => {});
+      toast.success('⭐ ¡Perfil destacado activado! Ahora apareces primero en las búsquedas.');
+      window.history.replaceState({}, '', '/expert-dashboard');
+    }
+  }, []); // job esperando checklist
   const [beforePhotos, setBeforePhotos] = useState([]);   // fotos "antes"
   const [photoMode, setPhotoMode] = useState({});         // { jobId: 'before'|'after' }
   const [videoUrl, setVideoUrl] = useState(user?.expert_profile?.video_url ?? '');
@@ -297,6 +314,14 @@ export default function ExpertDashboard() {
 
       {chatJob && (
         <ChatModal job={chatJob} currentUserId={user?.id} onClose={() => setChatJob(null)} />
+      )}
+
+      {showFeatured && (
+        <FeaturedListingModal
+          status={featuredStatus}
+          onClose={() => setShowFeatured(false)}
+          onSuccess={() => { setShowFeatured(false); api.get('/featured/status').then(r => setFeaturedStatus(r.data)).catch(() => {}); }}
+        />
       )}
 
       {checklistJob && (
@@ -1080,6 +1105,43 @@ export default function ExpertDashboard() {
         {/* Tab: Mi Perfil */}
         {activeTab === 'profile' && (
           <div className="max-w-2xl space-y-6">
+
+            {/* Listing Destacado */}
+            <div className={`rounded-2xl border-2 p-5 ${featuredStatus?.is_featured ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">⭐</span>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">Experto Destacado</p>
+                    <p className="text-xs text-gray-500">Aparece primero en las búsquedas</p>
+                  </div>
+                </div>
+                {featuredStatus?.is_featured && (
+                  <span className="text-xs font-bold text-amber-700 bg-amber-200 px-2.5 py-1 rounded-full">✅ Activo</span>
+                )}
+              </div>
+              {featuredStatus?.is_featured && featuredStatus.featured_until && (
+                <p className="text-xs text-amber-700 mb-3">
+                  Activo hasta: <strong>{new Date(featuredStatus.featured_until).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
+                </p>
+              )}
+              <div className="grid grid-cols-3 gap-2 mb-4 text-center text-xs">
+                {[['🔝', 'Primero en resultados'], ['📈', '3× más visitas'], ['💰', 'Más cotizaciones']].map(([icon, label]) => (
+                  <div key={label} className="bg-white rounded-xl p-2 border border-gray-100">
+                    <div className="text-lg mb-0.5">{icon}</div>
+                    <div className="text-gray-600 leading-tight">{label}</div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setShowFeatured(true)}
+                className={`w-full py-2.5 text-sm font-bold rounded-xl transition-colors ${
+                  featuredStatus?.is_featured
+                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300'
+                    : 'bg-amber-500 text-white hover:bg-amber-600 shadow-sm shadow-amber-500/30'
+                }`}>
+                {featuredStatus?.is_featured ? '⭐ Extender destacado' : '⭐ Destacar mi perfil desde $99'}
+              </button>
+            </div>
 
             {/* Completeness indicator */}
             {(() => {

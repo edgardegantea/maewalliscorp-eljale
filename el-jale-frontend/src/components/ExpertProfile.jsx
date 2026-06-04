@@ -92,6 +92,9 @@ export default function ExpertProfile() {
                   {expert.name[0].toUpperCase()}
                 </div>
                 <div className="mb-1 flex flex-wrap gap-2">
+                  {profile?.is_featured && (
+                    <span className="px-2.5 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">⭐ Destacado</span>
+                  )}
                   {profile?.is_founding_member && (
                     <span className="px-2.5 py-1 bg-brand-accent text-brand-dark text-xs font-bold rounded-full">⭐ Socio Fundador</span>
                   )}

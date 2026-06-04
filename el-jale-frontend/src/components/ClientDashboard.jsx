@@ -22,6 +22,8 @@ import LoyaltyWidget from './LoyaltyWidget';
 import MaintenancePackages from './MaintenancePackages';
 import TipModal from './TipModal';
 import usePWAInstall from '../hooks/usePWAInstall';
+import AddressAutocomplete from './AddressAutocomplete';
+import AIDescriptionHelper from './AIDescriptionHelper';
 
 // ── Google Calendar / iCal helpers ────────────────────────────────
 function toCalDate(dateStr, timeStr) {
@@ -461,12 +463,24 @@ export default function ClientDashboard() {
                     <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Descripción detallada</label>
                     <textarea name="description" value={newJob.description} onChange={handleChange} rows="3" required
                       placeholder="Explica el problema para que el experto lleve las herramientas adecuadas..." className="input" />
+                    <div className="mt-2">
+                      <AIDescriptionHelper
+                        categoryName={categories.find(c => String(c.id) === String(newJob.category_id))?.name}
+                        description={newJob.description}
+                        urgency={newJob.is_urgent ? 'urgente' : 'normal'}
+                        onImprove={desc => setNewJob(p => ({ ...p, description: desc }))}
+                        onTitle={title => setNewJob(p => ({ ...p, title }))}
+                      />
+                    </div>
                   </div>
 
                   <div className="col-span-1 md:col-span-2">
                     <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Dirección del trabajo</label>
-                    <input type="text" name="address" value={newJob.address} onChange={handleChange}
-                      placeholder="Ej. Calle Juárez 45, Col. Centro" className="input" />
+                    <AddressAutocomplete
+                      value={newJob.address}
+                      onChange={v => setNewJob(p => ({ ...p, address: v }))}
+                      onSelect={({ address }) => setNewJob(p => ({ ...p, address }))}
+                    />
                   </div>
 
                   <div className="col-span-1">

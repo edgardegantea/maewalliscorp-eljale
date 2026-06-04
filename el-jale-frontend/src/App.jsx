@@ -17,6 +17,8 @@ const ExpertProfile   = lazy(() => import('./components/ExpertProfile'));
 const ExploreExperts  = lazy(() => import('./components/ExploreExperts'));
 const CategoryPage    = lazy(() => import('./components/CategoryPage'));
 const NotFound        = lazy(() => import('./components/NotFound'));
+const CompanyDashboard = lazy(() => import('./components/CompanyDashboard'));
+const CompanyRegister  = lazy(() => import('./components/CompanyRegister'));
 
 // Spinner de carga global
 function PageLoader() {
@@ -66,6 +68,10 @@ function App() {
           <Route path="/client-dashboard" element={<PrivateRoute role="client"><ClientDashboard /></PrivateRoute>} />
           <Route path="/explorar"         element={<PrivateRoute role="client"><ExploreExperts /></PrivateRoute>} />
           <Route path="/admin"            element={<PrivateRoute role="admin"><AdminDashboard /></PrivateRoute>} />
+
+          {/* B2B Empresas */}
+          <Route path="/empresas"          element={<CompanyDashboard />} />
+          <Route path="/register/empresa"  element={<PublicRoute><CompanyRegister /></PublicRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

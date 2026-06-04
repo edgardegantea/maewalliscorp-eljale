@@ -185,10 +185,15 @@ export default function ExploreExperts() {
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {experts.map(expert => (
-              <div key={expert.id} className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden flex flex-col group">
+            {[...experts].sort((a, b) => (b.is_featured ? 1 : 0) - (a.is_featured ? 1 : 0)).map(expert => (
+              <div key={expert.id} className={`bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden flex flex-col group relative ${expert.is_featured ? 'ring-2 ring-amber-400' : ''}`}>
+                {expert.is_featured && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">⭐ DESTACADO</span>
+                  </div>
+                )}
                 {/* Header */}
-                <div className="bg-brand-dark h-12 relative" />
+                <div className={`h-12 relative ${expert.is_featured ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-brand-dark'}`} />
                 <div className="px-5 pb-4 flex-grow">
                   <div className="-mt-6 mb-3 flex items-end justify-between">
                     <div className="flex items-end gap-3">

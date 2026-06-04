@@ -55,9 +55,15 @@ return [
 
     // Twilio
     'twilio' => [
-        'sid'   => env('TWILIO_SID'),
-        'token' => env('TWILIO_TOKEN'),
-        'from'  => env('TWILIO_FROM'),
+        'sid'         => env('TWILIO_SID'),
+        'token'       => env('TWILIO_TOKEN'),
+        'from'        => env('TWILIO_FROM'),
+        'whatsapp_from' => env('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
+    ],
+
+    // Anthropic (Claude)
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
     ],
 
 ];

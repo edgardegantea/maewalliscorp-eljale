@@ -20,6 +20,9 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PhoneVerificationController;
 use App\Http\Controllers\PriceEstimatorController;
+use App\Http\Controllers\FeaturedListingController;
+use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\AIController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,8 +50,9 @@ Route::post('/broadcasting/auth', function(\Illuminate\Http\Request $request) {
 
 // Autenticación (rate-limited)
 Route::middleware('throttle:auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/register',          [AuthController::class, 'register']);
+    Route::post('/register/company',  [CompanyController::class, 'register']);
+    Route::post('/login',             [AuthController::class, 'login']);
 });
 
 // Catálogo de Oficios
@@ -231,6 +235,27 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/kyc/{userId}/document/{field}', [IdentityVerificationController::class, 'getDocument']);
         Route::post('/kyc/{userId}/approve',         [IdentityVerificationController::class, 'approve']);
         Route::post('/kyc/{userId}/reject',          [IdentityVerificationController::class, 'reject']);
+
+        // Featured listings — admin toggle manual
+        Route::post('/featured/{userId}/toggle',     [FeaturedListingController::class, 'adminToggle']);
     });
+
+    // ── Featured listings (expertos) ─────────────────────────────────
+    Route::prefix('featured')->group(function () {
+        Route::get('/status',         [FeaturedListingController::class, 'status']);
+        Route::post('/preference',    [FeaturedListingController::class, 'createPreference']);
+        Route::post('/activate',      [FeaturedListingController::class, 'activate']);
+    });
+
+    // ── Empresas (B2B) ────────────────────────────────────────────────
+    Route::prefix('company')->group(function () {
+        Route::get('/dashboard',      [CompanyController::class, 'dashboard']);
+        Route::put('/update',         [CompanyController::class, 'update']);
+        Route::post('/invite',        [CompanyController::class, 'invite']);
+    });
+
+    // ── IA ────────────────────────────────────────────────────────────
+    Route::post('/ai/describe',       [AIController::class, 'improveDescription']);
+    Route::post('/ai/title',          [AIController::class, 'suggestTitle']);
 
 });
