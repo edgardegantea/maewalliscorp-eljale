@@ -66,4 +66,10 @@ return [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // Conekta
+    'conekta' => [
+        'public_key'  => env('CONEKTA_PUBLIC_KEY'),
+        'secret_key'  => env('CONEKTA_SECRET_KEY'),
+    ],
+
 ];

@@ -24,6 +24,8 @@ import TipModal from './TipModal';
 import usePWAInstall from '../hooks/usePWAInstall';
 import AddressAutocomplete from './AddressAutocomplete';
 import AIDescriptionHelper from './AIDescriptionHelper';
+import TwoFactorSettings from './TwoFactorSettings';
+import ConektaPaymentModal from './ConektaPaymentModal';
 
 // ── Google Calendar / iCal helpers ────────────────────────────────
 function toCalDate(dateStr, timeStr) {
@@ -141,6 +143,7 @@ export default function ClientDashboard() {
   const [disputeJob, setDisputeJob] = useState(null);
   const [paymentJob, setPaymentJob] = useState(null);
   const [tipJob, setTipJob]         = useState(null);
+  const [conektaJob, setConektaJob] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const { canInstall, install } = usePWAInstall();
   const [activeTab, setActiveTab] = useState('jobs');
@@ -338,10 +341,14 @@ export default function ClientDashboard() {
       )}
 
       {tipJob && (
-        <TipModal
-          job={tipJob}
-          onClose={() => setTipJob(null)}
-          onTip={() => setTipJob(null)}
+        <TipModal job={tipJob} onClose={() => setTipJob(null)} onTip={() => setTipJob(null)} />
+      )}
+
+      {conektaJob && (
+        <ConektaPaymentModal
+          job={conektaJob}
+          onClose={() => setConektaJob(null)}
+          onPaid={() => { setConektaJob(null); fetchMyJobs(); toast.success('Verificando tu pago...'); }}
         />
       )}
 
@@ -707,6 +714,7 @@ export default function ClientDashboard() {
             {/* Tab: Mi Cuenta */}
             {activeTab === 'account' && (
               <div className="max-w-md space-y-4">
+                <TwoFactorSettings />
                 <PhoneVerification
                   user={JSON.parse(localStorage.getItem('user') || '{}')}
                   onVerified={() => {
@@ -894,14 +902,22 @@ export default function ClientDashboard() {
                             </button>
                           )}
 
-                          {/* Botón pagar — trabajo asignado sin pago todavía */}
+                          {/* Botones de pago — trabajo asignado sin pago todavía */}
                           {job.status === 'asignado' && (!job.payment || job.payment?.status === 'pendiente') && job.budget > 0 && (
-                            <button
-                              onClick={() => setPaymentJob(job)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-[#009EE3] hover:bg-[#0082c0] transition-colors"
-                            >
-                              💳 Pagar con MercadoPago
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => setPaymentJob(job)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-[#009EE3] hover:bg-[#0082c0] transition-colors"
+                              >
+                                💳 MercadoPago
+                              </button>
+                              <button
+                                onClick={() => setConektaJob(job)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-white bg-blue-700 hover:bg-blue-800 transition-colors"
+                              >
+                                💳 Tarjeta (Conekta)
+                              </button>
+                            </div>
                           )}
 
                           {/* Pago pendiente de confirmación */}

@@ -23,6 +23,10 @@ use App\Http\Controllers\PriceEstimatorController;
 use App\Http\Controllers\FeaturedListingController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\AIController;
+use App\Http\Controllers\TwoFactorController;
+use App\Http\Controllers\CounterOfferController;
+use App\Http\Controllers\FraudDetectionController;
+use App\Http\Controllers\ConektaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +46,7 @@ use App\Http\Controllers\AIController;
 // Webhooks públicos (sin autenticación)
 Route::post('/mp/webhook',            [MercadoPagoController::class, 'webhook']);
 Route::post('/subscriptions/webhook', [SubscriptionController::class, 'webhook']);
+Route::post('/conekta/webhook',       [ConektaController::class, 'webhook']);
 
 // Broadcasting auth (Reverb/Sanctum)
 Route::post('/broadcasting/auth', function(\Illuminate\Http\Request $request) {
@@ -257,5 +262,29 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── IA ────────────────────────────────────────────────────────────
     Route::post('/ai/describe',       [AIController::class, 'improveDescription']);
     Route::post('/ai/title',          [AIController::class, 'suggestTitle']);
+
+    // ── 2FA ───────────────────────────────────────────────────────────
+    Route::prefix('2fa')->group(function () {
+        Route::get('/status',         [TwoFactorController::class, 'status']);
+        Route::post('/send',          [TwoFactorController::class, 'send']);
+        Route::post('/verify',        [TwoFactorController::class, 'verify']);
+        Route::post('/enable',        [TwoFactorController::class, 'enable']);
+        Route::post('/disable',       [TwoFactorController::class, 'disable']);
+    });
+
+    // ── Contra-oferta ─────────────────────────────────────────────────
+    Route::post('/jobs/{jobId}/bids/{bidId}/counter',        [CounterOfferController::class, 'make']);
+    Route::post('/jobs/{jobId}/bids/{bidId}/counter/accept', [CounterOfferController::class, 'accept']);
+    Route::post('/jobs/{jobId}/bids/{bidId}/counter/reject', [CounterOfferController::class, 'reject']);
+
+    // ── Fraude ────────────────────────────────────────────────────────
+    Route::prefix('admin/fraud')->group(function () {
+        Route::get('/',               [FraudDetectionController::class, 'index']);
+        Route::post('/analyze',       [FraudDetectionController::class, 'runAnalysis']);
+        Route::post('/{id}/resolve',  [FraudDetectionController::class, 'resolve']);
+    });
+
+    // ── Conekta ───────────────────────────────────────────────────────
+    Route::post('/jobs/{jobId}/conekta/order',  [ConektaController::class, 'createOrder']);
 
 });

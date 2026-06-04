@@ -19,6 +19,7 @@ const CategoryPage    = lazy(() => import('./components/CategoryPage'));
 const NotFound        = lazy(() => import('./components/NotFound'));
 const CompanyDashboard = lazy(() => import('./components/CompanyDashboard'));
 const CompanyRegister  = lazy(() => import('./components/CompanyRegister'));
+const CityServicePage  = lazy(() => import('./components/CityServicePage'));
 
 // Spinner de carga global
 function PageLoader() {
@@ -72,6 +73,9 @@ function App() {
           {/* B2B Empresas */}
           <Route path="/empresas"          element={<CompanyDashboard />} />
           <Route path="/register/empresa"  element={<PublicRoute><CompanyRegister /></PublicRoute>} />
+
+          {/* SEO — páginas por ciudad y categoría */}
+          <Route path="/servicios/:categoria/:ciudad" element={<CityServicePage />} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

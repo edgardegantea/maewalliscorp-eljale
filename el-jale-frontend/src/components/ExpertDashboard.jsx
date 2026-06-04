@@ -18,6 +18,7 @@ import ReferralWidget from './ReferralWidget';
 import InspectionChecklistModal from './InspectionChecklistModal';
 import usePWAInstall from '../hooks/usePWAInstall';
 import FeaturedListingModal from './FeaturedListingModal';
+import TwoFactorSettings from './TwoFactorSettings';
 
 const STATUS_CONFIG = {
   asignado:   { label: 'En Progreso',  color: 'bg-blue-100 text-blue-800' },
@@ -1320,6 +1321,9 @@ export default function ExpertDashboard() {
 
             {/* Membresía Premium */}
             <PremiumCard />
+
+            {/* 2FA */}
+            <TwoFactorSettings />
 
             {/* Verificación de teléfono */}
             <PhoneVerification user={user} onVerified={() => {

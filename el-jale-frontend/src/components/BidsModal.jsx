@@ -25,6 +25,10 @@ export default function BidsModal({ job, onClose, onAccepted }) {
   const [accepting, setAccepting] = useState(null);
   const [viewMode, setViewMode] = useState('list');
   const [compared, setCompared] = useState([]);
+  const [counterBid, setCounterBid] = useState(null);  // bid al que se hace contra-oferta
+  const [counterAmount, setCounterAmount] = useState('');
+  const [counterMsg, setCounterMsg]       = useState('');
+  const [sendingCounter, setSendingCounter] = useState(false);
   const bestBidId = getBestBidId(bids);
 
   useEffect(() => {
@@ -37,6 +41,23 @@ export default function BidsModal({ job, onClose, onAccepted }) {
       .finally(() => setLoading(false));
     return () => { document.body.style.overflow = ''; window.removeEventListener('keydown', esc); };
   }, [job.id]);
+
+  const handleCounterOffer = async () => {
+    if (!counterAmount || Number(counterAmount) <= 0) { toast.error('Ingresa un monto válido.'); return; }
+    setSendingCounter(true);
+    try {
+      await api.post(`/jobs/${job.id}/bids/${counterBid.id}/counter`, {
+        counter_amount: counterAmount,
+        counter_message: counterMsg || undefined,
+      });
+      toast.success('💬 Contra-oferta enviada al experto.');
+      setCounterBid(null); setCounterAmount(''); setCounterMsg('');
+      // Recargar bids
+      const r = await api.get(`/jobs/${job.id}/bids`);
+      setBids(r.data);
+    } catch (e) { toast.error(e.response?.data?.message ?? 'Error'); }
+    finally { setSendingCounter(false); }
+  };
 
   const handleAccept = async (bidId) => {
     if (!window.confirm('¿Confirmas que quieres contratar a este experto?')) return;
@@ -133,6 +154,41 @@ export default function BidsModal({ job, onClose, onAccepted }) {
           </div>
         )}
 
+        {/* Modal contra-oferta */}
+        {counterBid && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center p-4 bg-black/40 rounded-2xl">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-gray-900">💬 Tu contra-oferta</p>
+                <button onClick={() => setCounterBid(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              </div>
+              <p className="text-xs text-gray-500">
+                El experto pidió <strong>{fmt(counterBid.amount)}</strong>. Propón el precio que consideras justo.
+              </p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+                <input type="number" min="1" step="1" value={counterAmount}
+                  onChange={e => setCounterAmount(e.target.value)}
+                  placeholder="Tu precio propuesto"
+                  className="w-full border border-gray-200 rounded-xl pl-7 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30 font-bold text-center" />
+              </div>
+              <textarea rows={2} value={counterMsg} onChange={e => setCounterMsg(e.target.value)}
+                placeholder="Mensaje al experto (opcional)"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+              <div className="flex gap-3">
+                <button onClick={() => setCounterBid(null)}
+                  className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl">
+                  Cancelar
+                </button>
+                <button onClick={handleCounterOffer} disabled={sendingCounter || !counterAmount}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-xl disabled:opacity-60">
+                  {sendingCounter ? 'Enviando...' : '💬 Proponer precio'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Vista Lista ── */}
         {viewMode === 'list' && <div className="overflow-y-auto flex-1 p-4 space-y-3">
           {loading && (
@@ -197,13 +253,31 @@ export default function BidsModal({ job, onClose, onAccepted }) {
                     ) : (
                       <span className="text-sm text-gray-400 italic">Precio a convenir</span>
                     )}
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => window.open(`/expertos/${bid.expert.id}`, '_blank')}
                         className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
                       >
                         Ver perfil
                       </button>
+                      {/* Contra-oferta — solo si tiene precio y está pendiente */}
+                      {bid.amount && bid.status === 'pendiente' && bid.counter_status !== 'accepted' && (
+                        <button onClick={() => { setCounterBid(bid); setCounterAmount(String(Math.round(Number(bid.amount) * 0.9))); }}
+                          className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors">
+                          💬 Negociar precio
+                        </button>
+                      )}
+                      {/* Mostrar estado de contra-oferta */}
+                      {bid.counter_status === 'pending' && (
+                        <span className="px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl">
+                          ⏳ Propuesta enviada: {fmt(bid.counter_amount)}
+                        </span>
+                      )}
+                      {bid.counter_status === 'accepted' && (
+                        <span className="px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          ✅ Precio acordado: {fmt(bid.counter_amount)}
+                        </span>
+                      )}
                       <button
                         onClick={() => handleAccept(bid.id)}
                         disabled={accepting === bid.id}

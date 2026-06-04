@@ -212,6 +212,7 @@ export default function AdminDashboard() {
     if (activeTab === 'payments')      fetchPayments();
     if (activeTab === 'categories')    fetchCategories();
     if (activeTab === 'kyc' || activeTab === 'stats') fetchKycUsers();
+    if (activeTab === 'fraud') fetchFraud();
     if (activeTab === 'disputes')      fetchDisputes();
     if (activeTab === 'reviews')       fetchReviews();
     if (activeTab === 'notifications') fetchNotifs();
@@ -336,6 +337,30 @@ export default function AdminDashboard() {
     finally { setBroadcastSending(false); }
   };
 
+  const [fraudFlags, setFraudFlags] = useState([]);
+  const [fraudStats, setFraudStats] = useState(null);
+  const [fraudLoading, setFraudLoading] = useState(false);
+  const [analyzingFraud, setAnalyzingFraud] = useState(false);
+
+  const fetchFraud = async () => {
+    setFraudLoading(true);
+    try {
+      const r = await api.get('/admin/fraud');
+      setFraudFlags(r.data.data?.data ?? []);
+      setFraudStats(r.data.stats);
+    } catch {} finally { setFraudLoading(false); }
+  };
+
+  const handleResolveFraud = async (id) => {
+    const resolution = window.prompt('Describe la resolución:');
+    if (!resolution?.trim()) return;
+    try {
+      await api.post(`/admin/fraud/${id}/resolve`, { resolution });
+      toast.success('Flag resuelto.');
+      fetchFraud();
+    } catch (e) { toast.error(e.response?.data?.message ?? 'Error'); }
+  };
+
   const pendingKyc = kycFilter === 'pending' ? kycUsers.length : 0;
   const TABS = [
     { id: 'stats',         label: 'Resumen',        icon: '📊' },
@@ -348,6 +373,7 @@ export default function AdminDashboard() {
     { id: 'notifications', label: 'Notificaciones', icon: '🔔' },
     { id: 'categories',    label: 'Oficios',        icon: '🏷️' },
     { id: 'config',        label: 'Configuración',  icon: '⚙️' },
+    { id: 'fraud',         label: 'Fraude',         icon: '🚨', badge: fraudStats?.high ?? 0 },
   ];
 
   return (
@@ -1564,6 +1590,97 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── TAB: FRAUDE ── */}
+          {activeTab === 'fraud' && (
+            <div className="space-y-5">
+              {/* KPIs */}
+              {fraudStats && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { l: 'Total flags',   v: fraudStats.total,     color: 'bg-gray-100 text-gray-600'  },
+                    { l: 'Sin resolver',  v: fraudStats.unresolved, color: 'bg-amber-100 text-amber-700' },
+                    { l: '🔴 Alta',       v: fraudStats.high,       color: 'bg-red-100 text-red-600'    },
+                    { l: '🟡 Media',      v: fraudStats.medium,     color: 'bg-orange-100 text-orange-600' },
+                  ].map(s => (
+                    <div key={s.l} className={`${s.color} rounded-2xl p-4 text-center`}>
+                      <p className="text-2xl font-black">{s.v}</p>
+                      <p className="text-xs font-medium mt-0.5">{s.l}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Acciones */}
+              <div className="flex items-center gap-3">
+                <button onClick={fetchFraud} className="flex items-center gap-1.5 text-xs text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors">
+                  ↺ Actualizar
+                </button>
+                <button
+                  onClick={async () => {
+                    setAnalyzingFraud(true);
+                    try {
+                      const r = await api.post('/admin/fraud/analyze');
+                      toast.success(r.data.message);
+                      fetchFraud();
+                    } catch { toast.error('Error al analizar'); }
+                    finally { setAnalyzingFraud(false); }
+                  }}
+                  disabled={analyzingFraud}
+                  className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-2 rounded-xl transition-colors disabled:opacity-60">
+                  {analyzingFraud ? '⏳ Analizando...' : '🔍 Ejecutar análisis de fraude'}
+                </button>
+              </div>
+
+              {/* Lista de flags */}
+              {fraudLoading ? (
+                <div className="flex justify-center py-12"><svg className="animate-spin w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+              ) : fraudFlags.length === 0 ? (
+                <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+                  <div className="text-5xl mb-3">✅</div>
+                  <p className="font-semibold text-gray-700">Sin alertas de fraude activas</p>
+                  <p className="text-sm text-gray-400 mt-1">Ejecuta el análisis para detectar patrones sospechosos.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {fraudFlags.map(flag => {
+                    const severityColor = flag.severity === 'high' ? 'border-red-300 bg-red-50' : flag.severity === 'medium' ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50';
+                    const badgeColor    = flag.severity === 'high' ? 'bg-red-500' : flag.severity === 'medium' ? 'bg-amber-500' : 'bg-gray-400';
+                    return (
+                      <div key={flag.id} className={`bg-white rounded-2xl border-2 p-5 ${flag.resolved ? 'opacity-60 border-gray-100' : severityColor}`}>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`${badgeColor} text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase`}>{flag.severity}</span>
+                            <span className="text-sm font-bold text-gray-900">{flag.type.replace(/_/g, ' ')}</span>
+                          </div>
+                          {flag.resolved
+                            ? <span className="text-xs text-emerald-600 font-semibold">✅ Resuelto</span>
+                            : <button onClick={() => handleResolveFraud(flag.id)}
+                                className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-xl transition-colors">
+                                Resolver
+                              </button>
+                          }
+                        </div>
+                        <p className="text-sm text-gray-600">{flag.description}</p>
+                        {flag.user && (
+                          <p className="text-xs text-gray-400 mt-2">
+                            Usuario: <button onClick={() => openUserDetail(flag.user.id)} className="font-semibold text-blue-600 hover:underline">{flag.user.name}</button>
+                            {' · '}{flag.user.email}
+                          </p>
+                        )}
+                        {flag.resolution && (
+                          <div className="mt-2 bg-emerald-50 rounded-xl p-2.5">
+                            <p className="text-xs text-emerald-700 font-medium">Resolución: {flag.resolution}</p>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-gray-400 mt-2">{new Date(flag.created_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
