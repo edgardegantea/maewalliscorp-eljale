@@ -201,6 +201,8 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedJob, setSelectedJob]   = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [editingUser, setEditingUser] = useState(null); // { name, email, role }
+  const [savingUser, setSavingUser] = useState(false);
 
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user'));
@@ -213,6 +215,14 @@ export default function AdminDashboard() {
     if (activeTab === 'categories')    fetchCategories();
     if (activeTab === 'kyc' || activeTab === 'stats') fetchKycUsers();
     if (activeTab === 'fraud') fetchFraud();
+    if (activeTab === 'companies') {
+      setCompaniesLoading(true);
+      api.get('/admin/companies').then(r => setCompanies(r.data.data ?? [])).catch(() => {}).finally(() => setCompaniesLoading(false));
+    }
+    if (activeTab === 'featured') {
+      setFeaturedLoading(true);
+      api.get('/admin/featured').then(r => setFeaturedExperts(r.data)).catch(() => {}).finally(() => setFeaturedLoading(false));
+    }
     if (activeTab === 'disputes')      fetchDisputes();
     if (activeTab === 'reviews')       fetchReviews();
     if (activeTab === 'notifications') fetchNotifs();
@@ -289,8 +299,13 @@ export default function AdminDashboard() {
     if (configForm.password !== configForm.password_confirmation) { toast.error('Las contraseñas no coinciden.'); return; }
     setConfigSaving(true);
     try {
-      await api.post('/admin/users/create', { ...configForm, role: 'admin' });
-      toast.success('Administrador creado ✅');
+      const r = await api.post('/admin/users/create', {
+        name:     configForm.name,
+        email:    configForm.email,
+        password: configForm.password,
+        role:     'admin',
+      });
+      toast.success(r.data.message ?? 'Administrador creado ✅');
       setConfigForm({ name: '', email: '', password: '', password_confirmation: '' });
     } catch (e) { toast.error(e.response?.data?.message ?? 'Error al crear usuario'); }
     finally { setConfigSaving(false); }
@@ -318,6 +333,18 @@ export default function AdminDashboard() {
     finally { setPaymentActionLoading(false); }
   };
 
+  const handleSaveUser = async () => {
+    if (!editingUser || !selectedUser) return;
+    setSavingUser(true);
+    try {
+      const r = await api.put(`/admin/users/${selectedUser.user.id}`, editingUser);
+      toast.success(r.data.message ?? 'Usuario actualizado.');
+      setEditingUser(null);
+      openUserDetail(selectedUser.user.id);
+    } catch (e) { toast.error(e.response?.data?.message ?? 'Error al actualizar'); }
+    finally { setSavingUser(false); }
+  };
+
   const handleDeleteReview = async (id) => {
     if (!window.confirm('¿Eliminar esta reseña?')) return;
     try { await api.delete(`/admin/reviews/${id}`); toast.success('Reseña eliminada.'); fetchReviews(); }
@@ -337,6 +364,10 @@ export default function AdminDashboard() {
     finally { setBroadcastSending(false); }
   };
 
+  const [companies, setCompanies] = useState([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [featuredExperts, setFeaturedExperts] = useState([]);
+  const [featuredLoading, setFeaturedLoading] = useState(false);
   const [fraudFlags, setFraudFlags] = useState([]);
   const [fraudStats, setFraudStats] = useState(null);
   const [fraudLoading, setFraudLoading] = useState(false);
@@ -374,6 +405,8 @@ export default function AdminDashboard() {
     { id: 'categories',    label: 'Oficios',        icon: '🏷️' },
     { id: 'config',        label: 'Configuración',  icon: '⚙️' },
     { id: 'fraud',         label: 'Fraude',         icon: '🚨', badge: fraudStats?.high ?? 0 },
+    { id: 'companies',     label: 'Empresas',       icon: '🏢' },
+    { id: 'featured',      label: 'Destacados',     icon: '⭐' },
   ];
 
   return (
@@ -451,7 +484,7 @@ export default function AdminDashboard() {
 
           {/* ── MODALES ── */}
           {selectedUser && (
-            <Modal title="Detalle del usuario" onClose={() => setSelectedUser(null)} size="md">
+            <Modal title="Detalle del usuario" onClose={() => { setSelectedUser(null); setEditingUser(null); }} size="md">
               <div className="space-y-5">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-orange-500 flex items-center justify-center text-white text-2xl font-black">
@@ -491,17 +524,44 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 )}
-                <div className="flex gap-2 pt-2 border-t border-gray-100">
-                  {selectedUser.user.role === 'expert' && (
-                    selectedUser.user.expert_profile?.is_verified
-                      ? <button onClick={() => handleVerify(selectedUser.user.id, false)} className="flex-1 px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors">Revocar verificación</button>
-                      : <button onClick={() => handleVerify(selectedUser.user.id, true)} className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-xl transition-colors">✓ Verificar experto</button>
-                  )}
-                  <button onClick={() => handleToggleUser(selectedUser.user.id)}
-                    className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl transition-colors border ${selectedUser.user.email_verified_at ? 'bg-red-50 text-red-600 hover:bg-red-100 border-red-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200'}`}>
-                    {selectedUser.user.email_verified_at ? '🚫 Desactivar' : '✅ Reactivar'}
-                  </button>
-                </div>
+                {/* Editar usuario inline */}
+                {editingUser ? (
+                  <div className="space-y-3 pt-2 border-t border-gray-100">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Editar usuario</p>
+                    <input type="text" value={editingUser.name} onChange={e => setEditingUser(u => ({ ...u, name: e.target.value }))}
+                      placeholder="Nombre" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                    <input type="email" value={editingUser.email} onChange={e => setEditingUser(u => ({ ...u, email: e.target.value }))}
+                      placeholder="Email" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                    <select value={editingUser.role} onChange={e => setEditingUser(u => ({ ...u, role: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30">
+                      <option value="client">Cliente</option>
+                      <option value="expert">Experto</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingUser(null)} className="flex-1 py-2 text-sm text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200">Cancelar</button>
+                      <button onClick={handleSaveUser} disabled={savingUser} className="flex-1 py-2 text-sm font-bold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-60">
+                        {savingUser ? 'Guardando...' : 'Guardar cambios'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 pt-2 border-t border-gray-100">
+                    <button onClick={() => setEditingUser({ name: selectedUser.user.name, email: selectedUser.user.email, role: selectedUser.user.role })}
+                      className="px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors">
+                      ✏️ Editar
+                    </button>
+                    {selectedUser.user.role === 'expert' && (
+                      selectedUser.user.expert_profile?.is_verified
+                        ? <button onClick={() => handleVerify(selectedUser.user.id, false)} className="flex-1 px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors">Revocar verificación</button>
+                        : <button onClick={() => handleVerify(selectedUser.user.id, true)} className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-xl transition-colors">✓ Verificar experto</button>
+                    )}
+                    <button onClick={() => handleToggleUser(selectedUser.user.id)}
+                      className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl transition-colors border ${selectedUser.user.email_verified_at ? 'bg-red-50 text-red-600 hover:bg-red-100 border-red-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200'}`}>
+                      {selectedUser.user.email_verified_at ? '🚫 Desactivar' : '✅ Reactivar'}
+                    </button>
+                  </div>
+                )}
               </div>
             </Modal>
           )}
@@ -1588,6 +1648,168 @@ export default function AdminDashboard() {
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB: EMPRESAS ── */}
+          {activeTab === 'companies' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-gray-900">Cuentas empresariales (B2B)</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Empresas registradas en la plataforma</p>
+                </div>
+              </div>
+              {companiesLoading ? (
+                <div className="flex justify-center py-12"><svg className="animate-spin w-8 h-8 text-orange-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+              ) : companies.length === 0 ? (
+                <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+                  <div className="text-5xl mb-3">🏢</div>
+                  <p className="font-semibold text-gray-700">Sin empresas registradas</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-100">
+                      <thead className="bg-gray-50">
+                        <tr>{['Empresa','RFC','Email','Plan','Usuarios','Estado',''].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {companies.map(c => (
+                          <tr key={c.id} className="hover:bg-gray-50/50 group">
+                            <td className="px-4 py-3">
+                              <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                              <p className="text-xs text-gray-400">{c.city}</p>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500">{c.rfc ?? '—'}</td>
+                            <td className="px-4 py-3 text-xs text-gray-600">{c.email}</td>
+                            <td className="px-4 py-3">
+                              <span className="capitalize text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{c.plan}</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{c.users_count ?? '—'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                                {c.is_active ? '✅ Activa' : '🚫 Inactiva'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const r = await api.post(`/admin/companies/${c.id}/toggle`);
+                                    toast.success(r.data.message);
+                                    setCompanies(prev => prev.map(co => co.id === c.id ? { ...co, is_active: !co.is_active } : co));
+                                  } catch { toast.error('Error'); }
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-lg transition-all">
+                                {c.is_active ? 'Desactivar' : 'Activar'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── TAB: DESTACADOS ── */}
+          {activeTab === 'featured' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-gray-900">Expertos Destacados</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Listados promovidos activos y expirados</p>
+                </div>
+                <button onClick={() => { setFeaturedLoading(true); api.get('/admin/featured').then(r => setFeaturedExperts(r.data)).catch(() => {}).finally(() => setFeaturedLoading(false)); }}
+                  className="text-xs text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors">
+                  ↺ Actualizar
+                </button>
+              </div>
+              {featuredLoading ? (
+                <div className="flex justify-center py-12"><svg className="animate-spin w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>
+              ) : featuredExperts.length === 0 ? (
+                <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+                  <div className="text-5xl mb-3">⭐</div>
+                  <p className="font-semibold text-gray-700">Sin expertos destacados activos</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-100">
+                      <thead className="bg-gray-50">
+                        <tr>{['Experto','Email','Categoría','Activo hasta','Estado','Acciones'].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {featuredExperts.map(e => (
+                          <tr key={e.user_id} className="hover:bg-gray-50/50">
+                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">{e.name}</td>
+                            <td className="px-4 py-3 text-xs text-gray-500">{e.email}</td>
+                            <td className="px-4 py-3 text-xs text-gray-500">{e.category}</td>
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              {e.featured_until ? new Date(e.featured_until).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${e.is_active ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {e.is_active ? '⭐ Activo' : 'Expirado'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-1.5">
+                                <button onClick={() => openUserDetail(e.user_id)} className="text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg">Ver perfil</button>
+                                <button
+                                  onClick={async () => {
+                                    const days = window.prompt('¿Cuántos días agregar al destacado?', '7');
+                                    if (!days || isNaN(days)) return;
+                                    try {
+                                      const r = await api.post(`/admin/featured/${e.user_id}/toggle`, { days: parseInt(days) });
+                                      toast.success(r.data.message);
+                                      setFeaturedExperts(prev => prev.map(ex => ex.user_id === e.user_id ? { ...ex, is_active: true } : ex));
+                                    } catch (err) { toast.error(err.response?.data?.message ?? 'Error'); }
+                                  }}
+                                  className="text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg">
+                                  ⭐ Extender
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Dar destacado manualmente a cualquier experto */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                <p className="text-sm font-bold text-gray-900 mb-3">⭐ Dar destacado manualmente</p>
+                <div className="flex gap-3">
+                  <input type="number" id="feat-user-id" placeholder="ID del experto"
+                    className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                  <input type="number" id="feat-days" placeholder="Días" defaultValue="7"
+                    className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                  <button
+                    onClick={async () => {
+                      const userId = document.getElementById('feat-user-id').value;
+                      const days   = document.getElementById('feat-days').value;
+                      if (!userId || !days) { toast.error('Rellena ID y días.'); return; }
+                      try {
+                        const r = await api.post(`/admin/featured/${userId}/toggle`, { days: parseInt(days) });
+                        toast.success(r.data.message);
+                        api.get('/admin/featured').then(r => setFeaturedExperts(r.data)).catch(() => {});
+                      } catch (err) { toast.error(err.response?.data?.message ?? 'Error'); }
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors">
+                    Destacar
+                  </button>
                 </div>
               </div>
             </div>

@@ -238,8 +238,10 @@ class AdminController extends Controller
         $jobCount      = ServiceJob::where('client_id', $id)->orWhere('expert_id', $id)->count();
         $completedJobs = ServiceJob::where('expert_id', $id)->where('status', 'completado')->count();
         $reviews       = Review::with('job:id,title')->where('expert_id', $id)->latest()->take(5)->get();
-        $earned        = Payment::whereHas('serviceJob', fn($q) => $q->where('expert_id', $id))->where('status', 'liberado_al_experto')->sum('amount');
-        $spent         = Payment::whereHas('serviceJob', fn($q) => $q->where('client_id', $id))->where('status', 'liberado_al_experto')->sum('amount');
+        $earnedPayments = Payment::whereHas('serviceJob', fn($q) => $q->where('expert_id', $id))
+            ->where('status', 'liberado_al_experto')->get(['amount', 'expert_amount']);
+        $earned = $earnedPayments->sum(fn($p) => $p->expert_amount > 0 ? $p->expert_amount : $p->amount * 0.9);
+        $spent  = Payment::whereHas('serviceJob', fn($q) => $q->where('client_id', $id))->where('status', 'liberado_al_experto')->sum('amount');
         $recentJobs    = ServiceJob::with('category:id,name')
             ->where(fn($q) => $q->where('client_id', $id)->orWhere('expert_id', $id))
             ->latest()->take(5)->get();
@@ -251,7 +253,7 @@ class AdminController extends Controller
             'job_count'      => $jobCount,
             'completed_jobs' => $completedJobs,
             'reviews'        => $reviews,
-            'total_earned'   => (float) $earned,
+            'total_earned'   => (float) round($earned, 2),
             'total_spent'    => (float) $spent,
             'recent_jobs'    => $recentJobs,
             'notifications'  => $notifications,
@@ -619,5 +621,116 @@ class AdminController extends Controller
             'verification_status' => 'sin_documentos',
         ]);
         return response()->json(['message' => 'Verificación revocada.']);
+    }
+
+    // ── CREAR USUARIO ADMIN ──────────────────────────────────────────
+    public function createUser(Request $request)
+    {
+        $this->checkAdmin($request);
+        $request->validate([
+            'name'     => 'required|string|max:255',
+            'email'    => 'required|email|unique:users,email',
+            'password' => 'required|min:8',
+            'role'     => 'required|in:admin,client,expert',
+        ]);
+
+        $user = User::create([
+            'name'              => $request->name,
+            'email'             => $request->email,
+            'password'          => \Hash::make($request->password),
+            'role'              => $request->role,
+            'email_verified_at' => now(),
+        ]);
+
+        return response()->json(['message' => "Usuario {$user->role} creado exitosamente.", 'user' => $user], 201);
+    }
+
+    // ── EDITAR USUARIO ───────────────────────────────────────────────
+    public function updateUser(Request $request, $id)
+    {
+        $this->checkAdmin($request);
+        $request->validate([
+            'name'  => 'sometimes|string|max:255',
+            'email' => "sometimes|email|unique:users,email,{$id}",
+            'role'  => 'sometimes|in:admin,client,expert',
+        ]);
+
+        $user = User::findOrFail($id);
+        $user->update($request->only('name', 'email', 'role'));
+
+        return response()->json(['message' => 'Usuario actualizado.', 'user' => $user]);
+    }
+
+    // ── EMPRESAS (B2B) ───────────────────────────────────────────────
+    public function companies(Request $request)
+    {
+        $this->checkAdmin($request);
+        $companies = \App\Models\Company::withCount('users')
+            ->latest()->paginate(20);
+        return response()->json($companies);
+    }
+
+    public function toggleCompany(Request $request, $id)
+    {
+        $this->checkAdmin($request);
+        $company = \App\Models\Company::findOrFail($id);
+        $company->update(['is_active' => !$company->is_active]);
+        return response()->json(['message' => $company->is_active ? 'Empresa activada.' : 'Empresa desactivada.', 'company' => $company]);
+    }
+
+    // ── LISTINGS DESTACADOS ──────────────────────────────────────────
+    public function featuredList(Request $request)
+    {
+        $this->checkAdmin($request);
+        $profiles = ExpertProfile::with('user:id,name,email')
+            ->where('is_featured', true)
+            ->whereNotNull('featured_until')
+            ->orderBy('featured_until', 'desc')
+            ->get()
+            ->map(fn($p) => [
+                'user_id'        => $p->user_id,
+                'name'           => $p->user?->name,
+                'email'          => $p->user?->email,
+                'featured_until' => $p->featured_until,
+                'is_active'      => $p->featured_until && now()->lt($p->featured_until),
+                'category'       => $p->category?->name ?? '—',
+            ]);
+        return response()->json($profiles);
+    }
+
+    // ── DETALLE DE USUARIO CON GANANCIAS NETAS ───────────────────────
+    // Override userDetail para usar expert_amount neto
+    public function userDetailFixed(Request $request, $id)
+    {
+        $this->checkAdmin($request);
+
+        $user = User::with(['expertProfile.category'])->findOrFail($id);
+
+        $jobCount      = ServiceJob::where('client_id', $id)->orWhere('expert_id', $id)->count();
+        $completedJobs = ServiceJob::where('expert_id', $id)->where('status', 'completado')->count();
+        $reviews       = Review::with('job:id,title')->where('expert_id', $id)->latest()->take(5)->get();
+        $recentJobs    = ServiceJob::with('category:id,name')
+            ->where(fn($q) => $q->where('client_id', $id)->orWhere('expert_id', $id))
+            ->latest()->take(5)->get();
+        $referrals     = \App\Models\ReferralCredit::where('user_id', $id)->count();
+
+        // Ganancias netas (usa expert_amount si > 0)
+        $earnedPayments = Payment::whereHas('serviceJob', fn($q) => $q->where('expert_id', $id))
+            ->where('status', 'liberado_al_experto')->get(['amount','expert_amount']);
+        $earned = $earnedPayments->sum(fn($p) => $p->expert_amount > 0 ? $p->expert_amount : $p->amount * 0.9);
+
+        $spent = Payment::whereHas('serviceJob', fn($q) => $q->where('client_id', $id))
+            ->where('status', 'liberado_al_experto')->sum('amount');
+
+        return response()->json([
+            'user'           => $user,
+            'job_count'      => $jobCount,
+            'completed_jobs' => $completedJobs,
+            'reviews'        => $reviews,
+            'total_earned'   => (float) round($earned, 2),
+            'total_spent'    => (float) $spent,
+            'recent_jobs'    => $recentJobs,
+            'referrals_count'=> $referrals,
+        ]);
     }
 }

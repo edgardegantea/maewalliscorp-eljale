@@ -243,6 +243,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Featured listings — admin toggle manual
         Route::post('/featured/{userId}/toggle',     [FeaturedListingController::class, 'adminToggle']);
+        Route::get('/featured',                      [AdminController::class, 'featuredList']);
+
+        // Gestión de usuarios (crear, editar)
+        Route::post('/users/create',                 [AdminController::class, 'createUser']);
+        Route::put('/users/{id}',                    [AdminController::class, 'updateUser']);
+
+        // Empresas B2B
+        Route::get('/companies',                     [AdminController::class, 'companies']);
+        Route::post('/companies/{id}/toggle',        [AdminController::class, 'toggleCompany']);
     });
 
     // ── Featured listings (expertos) ─────────────────────────────────
